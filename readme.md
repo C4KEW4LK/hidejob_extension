@@ -2,6 +2,8 @@
 
 A simple Chrome extension that automatically manages job postings on LinkedIn by hiding dismissed job cards and auto-dismissing jobs with unwanted keywords.
 
+**This is something I put together for myself, rather quickly, but thought others might find it useful. **
+
 ## Features
 
 ### **Dual Job Management**

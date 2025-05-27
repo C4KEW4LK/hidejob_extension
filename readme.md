@@ -105,17 +105,17 @@ linkedin-job-manager/
 - **Edge**: Chromium-based versions
 - **Other browsers**: May work but not officially supported
 
-## 🔒 Privacy & Security
+## Privacy & Security
 
 - **No data collection**: Extension doesn't collect or transmit personal data
 - **Local storage only**: Keywords and settings stored locally in browser
 - **LinkedIn only**: Extension only runs on LinkedIn domains
 - **Open source**: All code is visible and auditable
 
-## 📄 License
+## License
 
 This project is open source and available under the [MIT License](LICENSE).
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 The extension is provided "as is" without warranty of any kind.

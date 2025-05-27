@@ -60,7 +60,7 @@ A simple Chrome extension that automatically manages job postings on LinkedIn by
 - **Dismiss Keyword Jobs Now**: Manual action to dismiss keyword jobs immediately
 - **Show Hidden Jobs**: Restore previously hidden job cards
 
-## 🛠️ How It Works
+## How It Works
 
 ### Hide Dismissed Jobs
 1. Scans page every **200ms** for dismissed job cards
@@ -81,7 +81,7 @@ A simple Chrome extension that automatically manages job postings on LinkedIn by
 - Maintains settings across page changes
 - Cleans up properly when leaving LinkedIn
 
-## 🔧 Technical Details
+## Technical Details
 
 ### Files Structure
 ```

@@ -12,7 +12,7 @@ A simple Chrome extension that automatically manages job postings on LinkedIn by
 
 ### **Smart Automation** 
 - **Fast Response**: Checks for dismissed jobs every 200ms for "instant" hiding
-- **Keyword Scanning**: Scans for unwanted jobs every 3 seconds
+- **Keyword Scanning**: Scans for unwanted jobs every 200ms
 - **Safe Delays**: 200ms delay between dismiss actions to avoid overwhelming LinkedIn
 - **Auto-Stop**: Both features stop after 10 minutes to prevent infinite running
 

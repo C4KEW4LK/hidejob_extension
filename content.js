@@ -94,10 +94,10 @@
     // Run once immediately
     await dismissJobsWithKeywords();
     
-    // Then run every 3 seconds
+    // Then run every 200ms
     dismissingIntervalId = setInterval(async () => {
       await dismissJobsWithKeywords();
-    }, 3000);
+    }, 200);
     
     // Stop after 10 minutes to prevent running forever
     if (timeoutId) clearTimeout(timeoutId);

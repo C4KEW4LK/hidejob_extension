@@ -1,4 +1,4 @@
-# LinkedIn Job Manager
+# LinkedIn Job Manager Extension
 
 A simple Chrome extension that automatically manages job postings on LinkedIn by hiding dismissed job cards and auto-dismissing jobs with unwanted keywords.
 

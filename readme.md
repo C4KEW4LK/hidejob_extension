@@ -2,7 +2,7 @@
 
 A simple Chrome extension that automatically manages job postings on LinkedIn by hiding dismissed job cards and auto-dismissing jobs with unwanted keywords.
 
-**This is something I put together for myself, rather quickly, but thought others might find it useful. **
+ *This is something I put together for myself, rather quickly, but thought others might find it useful.*
 
 ## Features
 
@@ -95,24 +95,6 @@ linkedin-job-manager/
 ├── background.js          # Background service worker
 └── README.md              # This file
 ```
-
-### Permissions
-- `activeTab`: Access current tab when extension is used
-- `scripting`: Execute scripts on LinkedIn pages
-- `storage`: Save user preferences and keywords
-- `host_permissions`: Access LinkedIn domains
-
-### Browser Compatibility
-- **Chrome**: Manifest V3 (recommended)
-- **Edge**: Chromium-based versions
-- **Other browsers**: May work but not officially supported
-
-## Privacy & Security
-
-- **No data collection**: Extension doesn't collect or transmit personal data
-- **Local storage only**: Keywords and settings stored locally in browser
-- **LinkedIn only**: Extension only runs on LinkedIn domains
-- **Open source**: All code is visible and auditable
 
 ## License
 

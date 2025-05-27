@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 400px;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    
+    textarea {
+      width: 100%;
+      height: 150px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    
+    button {
+      background-color: #4285f4;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+    }
+    
+    button:hover {
+      background-color: #3367d6;
+    }
+    
+    button.secondary {
+      background-color: #6c757d;
+    }
+    
+    button.secondary:hover {
+      background-color: #5a6268;
+    }
+    
+    .status {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .status.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .info-section {
+      background-color: #f0f8ff;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      border-left: 4px solid #4285f4;
+    }
+    
+    .info-section p {
+      margin: 5px 0;
+      font-size: 13px;
+    }
+    
+    input[type="checkbox"] {
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h3>LinkedIn Job Manager</h3>
+  
+  <div class="info-section">
+    <p><strong>Status:</strong> <span id="status-text">Active on LinkedIn</span></p>
+    <p>This extension hides dismissed job cards and can auto-dismiss jobs with unwanted keywords.</p>
+  </div>
+  
+  <div class="form-group">
+    <label>
+      <input type="checkbox" id="enableHiding" checked> Hide dismissed job cards
+    </label>
+  </div>
+  
+  <div class="form-group">
+    <label>
+      <input type="checkbox" id="enableDismissing"> Auto-dismiss jobs with keywords
+    </label>
+  </div>
+  
+  <div class="form-group" id="keywordsSection" style="display: none;">
+    <label for="keywords">Keywords to dismiss (one per line):</label>
+    <textarea id="keywords" placeholder="field
+customer
+podiatrist
+business
+sales
+etc..."></textarea>
+  </div>
+  
+  <button id="hideNow">Hide Dismissed Jobs Now</button>
+  <br>
+  <button id="dismissNow" class="secondary">Dismiss Keyword Jobs Now</button>
+  <br>
+  <button id="showHidden" class="secondary">Show Hidden Jobs</button>
+  
+  <div id="status" class="status" style="display: none;"></div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

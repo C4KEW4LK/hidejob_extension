@@ -46,10 +46,21 @@
       border: none;
       border-radius: 4px;
       cursor: pointer;
-      margin-right: 10px;
+      margin-bottom: 8px;
+      width: 100%;
+      font-size: 14px;
+      font-weight: 500;
     }
     
     button:hover {
+      background-color: #3367d6;
+    }
+    
+    button.primary {
+      background-color: #4285f4;
+    }
+    
+    button.primary:hover {
       background-color: #3367d6;
     }
     
@@ -59,6 +70,10 @@
     
     button.secondary:hover {
       background-color: #5a6268;
+    }
+    
+    .action-buttons {
+      margin-top: 15px;
     }
     
     .status {
@@ -118,21 +133,30 @@
     </label>
   </div>
   
-  <div class="form-group" id="keywordsSection" style="display: none;">
-    <label for="keywords">Keywords to dismiss (one per line):</label>
-    <textarea id="keywords" placeholder="field
-customer
-podiatrist
-business
-sales
-etc..."></textarea>
+  <div class="form-group">
+    <label>
+      <input type="checkbox" id="enableCompanyBlocking"> Hide jobs from specific companies
+    </label>
   </div>
   
-  <button id="hideNow">Hide Dismissed Jobs Now</button>
-  <br>
-  <button id="dismissNow" class="secondary">Dismiss Keyword Jobs Now</button>
-  <br>
-  <button id="showHidden" class="secondary">Show Hidden Jobs</button>
+  <div class="form-group" id="keywordsSection">
+    <label for="keywords">Keywords to dismiss (one per line):</label>
+    <textarea id="keywords" placeholder="job title 1
+job title 2
+job title 3"></textarea>
+  </div>
+  
+  <div class="form-group" id="companiesSection">
+    <label for="companies">Companies to hide (one per line):</label>
+    <textarea id="companies" placeholder="company name 1
+company name 2
+company name 3"></textarea>
+  </div>
+  
+  <div class="action-buttons">
+    <button id="runAllFeatures" class="primary">Run All Enabled Features</button>
+    <button id="showHidden" class="secondary">Restore Hidden Jobs</button>
+  </div>
   
   <div id="status" class="status" style="display: none;"></div>
   

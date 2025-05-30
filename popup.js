@@ -1,34 +1,56 @@
 document.addEventListener('DOMContentLoaded', function() {
   const enableHiding = document.getElementById('enableHiding');
   const enableDismissing = document.getElementById('enableDismissing');
+  const enableCompanyBlocking = document.getElementById('enableCompanyBlocking');
   const keywordsSection = document.getElementById('keywordsSection');
+  const companiesSection = document.getElementById('companiesSection');
   const keywordsTextarea = document.getElementById('keywords');
-  const hideNowButton = document.getElementById('hideNow');
-  const dismissNowButton = document.getElementById('dismissNow');
+  const companiesTextarea = document.getElementById('companies');
+  const runAllFeaturesButton = document.getElementById('runAllFeatures');
   const showHiddenButton = document.getElementById('showHidden');
   const statusDiv = document.getElementById('status');
   const statusText = document.getElementById('status-text');
 
-  // Default keywords
-  const defaultKeywords = [
-    "example1", "example2", "example3"
-  ];
-
   // Load saved settings
-  chrome.storage.sync.get(['linkedinHiderEnabled', 'linkedinDismissingEnabled', 'dismissKeywords'], function(result) {
-    enableHiding.checked = result.linkedinHiderEnabled !== false; // Default to true
-    enableDismissing.checked = result.linkedinDismissingEnabled === true; // Default to false
+  chrome.storage.sync.get(['linkedinHiderEnabled', 'linkedinDismissingEnabled', 'linkedinCompanyBlockingEnabled', 'dismissKeywords', 'blockedCompanies'], function(result) {
+    console.log('Loaded settings:', result);
     
-    const keywords = result.dismissKeywords || defaultKeywords;
+    enableHiding.checked = result.linkedinHiderEnabled !== false;
+    enableDismissing.checked = result.linkedinDismissingEnabled === true;
+    enableCompanyBlocking.checked = result.linkedinCompanyBlockingEnabled === true;
+    
+    // Load keywords
+    let keywords;
+    if (result.dismissKeywords && result.dismissKeywords.length > 0) {
+      keywords = result.dismissKeywords;
+    } else {
+      keywords = ['job title 1', 'job title 2', 'job title 3'];
+      chrome.storage.sync.set({ dismissKeywords: keywords });
+    }
     keywordsTextarea.value = keywords.join('\n');
     
+    // Load companies
+    let companies;
+    if (result.blockedCompanies && result.blockedCompanies.length > 0) {
+      companies = result.blockedCompanies;
+    } else {
+      companies = ['company name 1', 'company name 2', 'company name 3'];
+      chrome.storage.sync.set({ blockedCompanies: companies });
+    }
+    companiesTextarea.value = companies.join('\n');
+    
     updateKeywordsVisibility();
+    updateCompaniesVisibility();
     updateStatus();
   });
 
-  // Toggle keywords section visibility
+  // Toggle sections visibility
   function updateKeywordsVisibility() {
     keywordsSection.style.display = enableDismissing.checked ? 'block' : 'none';
+  }
+
+  function updateCompaniesVisibility() {
+    companiesSection.style.display = enableCompanyBlocking.checked ? 'block' : 'none';
   }
 
   function updateStatus() {
@@ -36,13 +58,12 @@ document.addEventListener('DOMContentLoaded', function() {
       if (tabs[0] && tabs[0].url.includes('linkedin.com')) {
         const hidingStatus = enableHiding.checked ? 'Hiding' : '';
         const dismissingStatus = enableDismissing.checked ? 'Dismissing' : '';
+        const companyBlockingStatus = enableCompanyBlocking.checked ? 'Company Blocking' : '';
         
-        if (hidingStatus && dismissingStatus) {
-          statusText.textContent = 'Hiding & Dismissing Active';
-        } else if (hidingStatus) {
-          statusText.textContent = 'Hiding Active';
-        } else if (dismissingStatus) {
-          statusText.textContent = 'Dismissing Active';
+        const activeFeatures = [hidingStatus, dismissingStatus, companyBlockingStatus].filter(Boolean);
+        
+        if (activeFeatures.length > 0) {
+          statusText.textContent = activeFeatures.join(' & ') + ' Active';
         } else {
           statusText.textContent = 'Disabled';
         }
@@ -52,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // Save settings when toggles change
+  // Event listeners for checkboxes
   enableHiding.addEventListener('change', function() {
     const enabled = enableHiding.checked;
     chrome.storage.sync.set({ linkedinHiderEnabled: enabled });
@@ -81,12 +102,33 @@ document.addEventListener('DOMContentLoaded', function() {
     showStatus(enabled ? 'Auto-dismissing enabled' : 'Auto-dismissing disabled', 'success');
   });
 
+  enableCompanyBlocking.addEventListener('change', function() {
+    const enabled = enableCompanyBlocking.checked;
+    chrome.storage.sync.set({ linkedinCompanyBlockingEnabled: enabled });
+    
+    updateCompaniesVisibility();
+    
+    sendMessageToContentScript({
+      action: 'toggleCompanyBlocking',
+      enabled: enabled
+    });
+    
+    updateStatus();
+    showStatus(enabled ? 'Company blocking enabled' : 'Company blocking disabled', 'success');
+  });
+
   // Save keywords when textarea loses focus
   keywordsTextarea.addEventListener('blur', function() {
     const keywordsText = keywordsTextarea.value.trim();
-    const keywords = keywordsText.split('\n').map(k => k.trim()).filter(k => k.length > 0);
+    const keywords = keywordsText.split('\n')
+      .map(k => k.trim().toLowerCase())
+      .filter(k => k.length > 0);
     
-    chrome.storage.sync.set({ dismissKeywords: keywords });
+    keywordsTextarea.value = keywords.join('\n');
+    
+    chrome.storage.sync.set({ dismissKeywords: keywords }, function() {
+      console.log('Keywords saved:', keywords);
+    });
     
     sendMessageToContentScript({
       action: 'updateKeywords',
@@ -96,20 +138,33 @@ document.addEventListener('DOMContentLoaded', function() {
     showStatus(`Saved ${keywords.length} keywords`, 'success');
   });
 
-  // Manual actions
-  hideNowButton.addEventListener('click', function() {
-    sendMessageToContentScript({
-      action: 'hideJobsNow'
-    }, function(response) {
-      showStatus(response ? response.message : 'Jobs hidden!', 'success');
+  // Save companies when textarea loses focus
+  companiesTextarea.addEventListener('blur', function() {
+    const companiesText = companiesTextarea.value.trim();
+    const companies = companiesText.split('\n')
+      .map(c => c.trim().toLowerCase())
+      .filter(c => c.length > 0);
+    
+    companiesTextarea.value = companies.join('\n');
+    
+    chrome.storage.sync.set({ blockedCompanies: companies }, function() {
+      console.log('Companies saved:', companies);
     });
+    
+    sendMessageToContentScript({
+      action: 'updateCompanies',
+      companies: companies
+    });
+    
+    showStatus(`Saved ${companies.length} companies`, 'success');
   });
 
-  dismissNowButton.addEventListener('click', function() {
+  // Button event listeners
+  runAllFeaturesButton.addEventListener('click', function() {
     sendMessageToContentScript({
-      action: 'dismissJobsNow'
+      action: 'runAllFeatures'
     }, function(response) {
-      showStatus(response ? response.message : 'Keyword jobs dismissed!', 'success');
+      showStatus(response ? response.message : 'All features executed!', 'success');
     });
   });
 
@@ -121,6 +176,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
+  // Add debug functionality - you can test this by typing in console: 
+  // document.getElementById('debugButton').click() if you add this button to HTML
+  window.debugJobs = function() {
+    sendMessageToContentScript({
+      action: 'debugJobs'
+    }, function(response) {
+      showStatus(response ? response.message : 'Debug info logged to console', 'success');
+    });
+  };
+
   function sendMessageToContentScript(message, callback) {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       if (tabs[0]) {
@@ -131,7 +196,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
           if (chrome.runtime.lastError) {
-            showStatus('Error: Make sure you\'re on LinkedIn', 'error');
+            console.error('Extension error:', chrome.runtime.lastError);
+            showStatus('Error: Make sure you\'re on LinkedIn and refresh the page', 'error');
           } else if (callback) {
             callback(response);
           }
@@ -149,7 +215,4 @@ document.addEventListener('DOMContentLoaded', function() {
       statusDiv.style.display = 'none';
     }, 3000);
   }
-
-  // Initial status update
-  updateStatus();
 });

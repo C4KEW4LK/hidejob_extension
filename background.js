@@ -5,6 +5,7 @@ chrome.runtime.onInstalled.addListener(function() {
   // Set default settings
   chrome.storage.sync.set({
     linkedinHiderEnabled: true,
-    linkedinDismissingEnabled: false
+    linkedinDismissingEnabled: false,
+    linkedinCompanyBlockingEnabled: false
   });
 });

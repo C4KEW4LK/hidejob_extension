@@ -161,52 +161,145 @@
     return dismissedCount;
   }
 
-  // Hide jobs from blocked companies function
-  function hideJobsFromBlockedCompanies() {
-    if (!isCompanyBlockingEnabled || blockedCompanies.length === 0) return 0;
+// Hide jobs from blocked companies function - COMPLETE FIXED VERSION
+function hideJobsFromBlockedCompanies() {
+  if (!isCompanyBlockingEnabled || blockedCompanies.length === 0) return 0;
+  
+  let hiddenCount = 0;
+  
+  document.querySelectorAll('.job-card-job-posting-card-wrapper[data-job-id]:not([data-company-hidden])').forEach(function(wrapper) {
+    const jobId = wrapper.getAttribute('data-job-id');
+    if (!jobId || companyHiddenJobIds.has(jobId)) return;
     
-    let hiddenCount = 0;
+    let companyFound = null;
+    let detectedCompany = '';
     
-    document.querySelectorAll('.job-card-job-posting-card-wrapper[data-job-id]:not([data-company-hidden])').forEach(function(wrapper) {
-      const jobId = wrapper.getAttribute('data-job-id');
-      if (!jobId || companyHiddenJobIds.has(jobId)) return;
+    // Method 1: Look for the specific LinkedIn company name structure
+    const companySubtitle = wrapper.querySelector('.artdeco-entity-lockup__subtitle div[dir="ltr"]');
+    if (companySubtitle) {
+      detectedCompany = companySubtitle.textContent.trim();
+    }
+    
+    // Method 2: Fallback - look for other common company selectors
+    if (!detectedCompany) {
+      const companySelectors = [
+        '.job-card-container__company-name',
+        '.job-card-list__company-name', 
+        '[data-control-name="company_name"]',
+        '.artdeco-entity-lockup__subtitle',
+        '.job-card-container__primary-description'
+      ];
       
-      const companyElements = wrapper.querySelectorAll('[dir="ltr"]');
-      let companyFound = null;
+      for (const selector of companySelectors) {
+        const element = wrapper.querySelector(selector);
+        if (element) {
+          const companyText = element.textContent.trim();
+          if (companyText && companyText.length > 0 && companyText.length < 100) {
+            detectedCompany = companyText;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Method 3: Last resort - look through all text elements for company patterns
+    if (!detectedCompany) {
+      const allTextElements = wrapper.querySelectorAll('div[dir="ltr"], span, a');
+      for (const element of allTextElements) {
+        const text = element.textContent.trim();
+        // Skip if text is too long (likely job description) or too short
+        if (text.length > 2 && text.length < 50 && !text.includes('•') && !text.includes('$')) {
+          // Check if this might be a company name by seeing if it matches our blocked list
+          const matchedCompany = blockedCompanies.find(company => 
+            text.toLowerCase().includes(company.toLowerCase())
+          );
+          if (matchedCompany) {
+            detectedCompany = text;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Check if detected company matches any blocked companies
+    if (detectedCompany) {
+      const matchedCompany = blockedCompanies.find(company => {
+        const companyLower = detectedCompany.toLowerCase();
+        const blockedLower = company.toLowerCase();
+        return companyLower.includes(blockedLower) || blockedLower.includes(companyLower);
+      });
       
-      companyElements.forEach(function(element) {
-        const text = element.textContent.trim().toLowerCase();
-        if (!text) return;
+      if (matchedCompany) {
+        companyFound = matchedCompany;
+      }
+    }
+    
+    // Hide the job if company is blocked
+    if (companyFound) {
+      const li = wrapper.closest('li.ember-view.occludable-update') || wrapper.closest('li') || wrapper.closest('[data-job-id]')?.parentElement;
+      
+      if (li) {
+        li.style.display = 'none';
+        li.setAttribute('data-company-hidden', 'true');
+        wrapper.setAttribute('data-company-hidden', 'true');
         
-        const matchedCompany = blockedCompanies.find(company => 
-          text.includes(company.toLowerCase())
-        );
+        companyHiddenJobIds.add(jobId);
+        hiddenCount++;
+        totalCompanyHidden++;
         
-        if (matchedCompany && !companyFound) {
-          companyFound = matchedCompany;
+        console.log(`LinkedIn Job Manager: ✓ Hidden job ID ${jobId} from blocked company "${companyFound}" (detected as: "${detectedCompany}")`);
+        storeJobId(jobId, 'company-hidden');
+      }
+    }
+  });
+  
+  return hiddenCount;
+}
+
+// Debug function to help identify company name selectors
+function debugCompanyDetection() {
+  console.log('=== COMPANY DETECTION DEBUG ===');
+  
+  const jobCards = document.querySelectorAll('.job-card-job-posting-card-wrapper[data-job-id]');
+  console.log(`Found ${jobCards.length} job cards`);
+  
+  jobCards.forEach((card, index) => {
+    if (index < 3) { // Debug first 3 jobs
+      const jobId = card.getAttribute('data-job-id');
+      console.log(`\n--- Job ${index + 1} (ID: ${jobId}) ---`);
+      
+      // Check the specific selector you mentioned
+      const subtitleDiv = card.querySelector('.artdeco-entity-lockup__subtitle div[dir="ltr"]');
+      if (subtitleDiv) {
+        console.log('✓ Found via .artdeco-entity-lockup__subtitle div[dir="ltr"]:', subtitleDiv.textContent.trim());
+      } else {
+        console.log('✗ NOT found via .artdeco-entity-lockup__subtitle div[dir="ltr"]');
+      }
+      
+      // Check other potential selectors
+      const selectors = [
+        '.artdeco-entity-lockup__subtitle',
+        '.job-card-container__company-name',
+        '.job-card-list__company-name',
+        '[data-control-name="company_name"]'
+      ];
+      
+      selectors.forEach(selector => {
+        const element = card.querySelector(selector);
+        if (element) {
+          console.log(`✓ Found via ${selector}:`, element.textContent.trim());
         }
       });
       
-      if (companyFound) {
-        const li = wrapper.closest('li.ember-view.occludable-update') || wrapper.closest('li') || wrapper.closest('[data-job-id]')?.parentElement;
-        
-        if (li) {
-          li.style.display = 'none';
-          li.setAttribute('data-company-hidden', 'true');
-          wrapper.setAttribute('data-company-hidden', 'true');
-          
-          companyHiddenJobIds.add(jobId);
-          hiddenCount++;
-          totalCompanyHidden++;
-          
-          console.log(`LinkedIn Job Manager: ✓ Hidden job ID ${jobId} from blocked company "${companyFound}"`);
-          storeJobId(jobId, 'company-hidden');
-        }
-      }
-    });
-    
-    return hiddenCount;
-  }
+      // Show all div[dir="ltr"] elements
+      const allDirElements = card.querySelectorAll('div[dir="ltr"]');
+      console.log(`Found ${allDirElements.length} div[dir="ltr"] elements:`);
+      allDirElements.forEach((el, i) => {
+        console.log(`  ${i + 1}: "${el.textContent.trim()}"`);
+      });
+    }
+  });
+}
 
   // Control functions
   function startHiding() {
@@ -421,9 +514,13 @@
     });
   }
 
-  // Message listener
+// Message listener
   chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     switch(request.action) {
+      case 'ping':
+        sendResponse({ status: 'ready' });
+        break;
+        
       case 'toggleHiding':
         isHidingEnabled = request.enabled;
         if (isHidingEnabled) {
@@ -478,30 +575,56 @@
         let totalActions = 0;
         let results = [];
         
+        console.log('LinkedIn Job Manager: Running all enabled features...');
+        console.log('Features enabled:', {
+          hiding: isHidingEnabled,
+          dismissing: isDismissingEnabled,
+          companyBlocking: isCompanyBlockingEnabled
+        });
+        
+        // Run hiding feature if enabled
         if (isHidingEnabled) {
           const hiddenCount = hideDismissedJobs();
           totalActions += hiddenCount;
-          if (hiddenCount > 0) results.push(`${hiddenCount} dismissed jobs hidden`);
+          if (hiddenCount > 0) {
+            results.push(`${hiddenCount} dismissed jobs hidden`);
+          }
+          console.log(`LinkedIn Job Manager: Hidden ${hiddenCount} dismissed jobs`);
         }
         
+        // Run company blocking feature if enabled
         if (isCompanyBlockingEnabled) {
           const companyHiddenCount = hideJobsFromBlockedCompanies();
           totalActions += companyHiddenCount;
-          if (companyHiddenCount > 0) results.push(`${companyHiddenCount} company jobs hidden`);
+          if (companyHiddenCount > 0) {
+            results.push(`${companyHiddenCount} company jobs hidden`);
+          }
+          console.log(`LinkedIn Job Manager: Hidden ${companyHiddenCount} company jobs`);
         }
         
+        // Run dismissing feature if enabled (this is async, so handle separately)
         if (isDismissingEnabled) {
           dismissJobsWithKeywords().then(dismissedCount => {
             totalActions += dismissedCount;
-            if (dismissedCount > 0) results.push(`${dismissedCount} keyword jobs dismissed`);
+            if (dismissedCount > 0) {
+              results.push(`${dismissedCount} keyword jobs dismissed`);
+            }
+            console.log(`LinkedIn Job Manager: Dismissed ${dismissedCount} keyword jobs`);
             
-            const message = results.length > 0 ? results.join(', ') : 'No actions needed';
-            sendResponse({message: message});
+            const finalMessage = results.length > 0 ? results.join(', ') : 'No actions needed - all jobs already processed';
+            console.log('LinkedIn Job Manager: Final result:', finalMessage);
+            sendResponse({ message: finalMessage });
+          }).catch(error => {
+            console.error('LinkedIn Job Manager: Error in dismissJobsWithKeywords:', error);
+            const finalMessage = results.length > 0 ? results.join(', ') + ' (dismissing had errors)' : 'Error in dismissing feature';
+            sendResponse({ message: finalMessage });
           });
-          return true;
+          return true; // Indicate async response
         } else {
-          const message = results.length > 0 ? results.join(', ') : 'No actions needed';
-          sendResponse({message: message});
+          // No async operations, send response immediately
+          const finalMessage = results.length > 0 ? results.join(', ') : 'No actions needed - all jobs already processed';
+          console.log('LinkedIn Job Manager: Final result:', finalMessage);
+          sendResponse({ message: finalMessage });
         }
         break;
         
@@ -553,6 +676,64 @@
       case 'showHiddenJobs':
         const restoredCount = showHiddenJobs();
         sendResponse({message: `Restored ${restoredCount} hidden job card(s)`});
+        break;
+        
+      // Test cases for debugging
+      case 'testHiding':
+        const testHiddenCount = hideDismissedJobs();
+        sendResponse({ message: `Hidden ${testHiddenCount} jobs` });
+        break;
+
+      case 'testCompanyBlocking':
+        const testCompanyCount = hideJobsFromBlockedCompanies();
+        sendResponse({ message: `Hidden ${testCompanyCount} company jobs` });
+        break;
+        
+      case 'debugCompanies':
+        // Debug function for company detection
+        console.log('=== COMPANY DETECTION DEBUG ===');
+        
+        const allJobCards = document.querySelectorAll('.job-card-job-posting-card-wrapper[data-job-id]');
+        console.log(`Found ${allJobCards.length} job cards`);
+        
+        allJobCards.forEach((card, index) => {
+          if (index < 3) { // Debug first 3 jobs
+            const jobId = card.getAttribute('data-job-id');
+            console.log(`\n--- Job ${index + 1} (ID: ${jobId}) ---`);
+            
+            // Check the specific selector you mentioned
+            const subtitleDiv = card.querySelector('.artdeco-entity-lockup__subtitle div[dir="ltr"]');
+            if (subtitleDiv) {
+              console.log('✓ Found via .artdeco-entity-lockup__subtitle div[dir="ltr"]:', subtitleDiv.textContent.trim());
+            } else {
+              console.log('✗ NOT found via .artdeco-entity-lockup__subtitle div[dir="ltr"]');
+            }
+            
+            // Check other potential selectors
+            const selectors = [
+              '.artdeco-entity-lockup__subtitle',
+              '.job-card-container__company-name',
+              '.job-card-list__company-name',
+              '[data-control-name="company_name"]'
+            ];
+            
+            selectors.forEach(selector => {
+              const element = card.querySelector(selector);
+              if (element) {
+                console.log(`✓ Found via ${selector}:`, element.textContent.trim());
+              }
+            });
+            
+            // Show all div[dir="ltr"] elements
+            const allDirElements = card.querySelectorAll('div[dir="ltr"]');
+            console.log(`Found ${allDirElements.length} div[dir="ltr"] elements:`);
+            allDirElements.forEach((el, i) => {
+              console.log(`  ${i + 1}: "${el.textContent.trim()}"`);
+            });
+          }
+        });
+        
+        sendResponse({message: 'Company detection debug info logged to console'});
         break;
     }
     return true;

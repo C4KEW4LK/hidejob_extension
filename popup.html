@@ -7,16 +7,23 @@
       width: 400px;
       padding: 20px;
       font-family: Arial, sans-serif;
+      margin: 0;
+    }
+    
+    h3 {
+      margin-top: 0;
+      color: #333;
     }
     
     .form-group {
-      margin-bottom: 15px;
+      margin-bottom: 20px;
     }
     
     label {
       display: block;
       margin-bottom: 5px;
       font-weight: bold;
+      color: #333;
     }
     
     input[type="text"] {
@@ -25,132 +32,326 @@
       border: 1px solid #ddd;
       border-radius: 4px;
       box-sizing: border-box;
+      font-size: 14px;
     }
     
-    textarea {
-      width: 100%;
-      height: 150px;
-      padding: 8px;
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    }
+    
+    .tag-input-container {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    
+    .tag-input {
+      flex: 1;
+    }
+    
+    .add-button {
+      background-color: #007bff;
+      color: white;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background-color 0.2s;
+    }
+    
+    .add-button:hover {
+      background-color: #0056b3;
+    }
+    
+    .tags-container {
+      max-height: 200px;
+      overflow-y: auto;
       border: 1px solid #ddd;
       border-radius: 4px;
-      font-family: monospace;
-      font-size: 12px;
-      box-sizing: border-box;
-      resize: vertical;
+      padding: 8px;
+      background: white;
+      min-height: 80px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: flex-start;
+      align-content: flex-start;
     }
     
-    button {
-      background-color: #4285f4;
+    .keyword-item {
+      display: inline-flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px;
+      background: #f8f9fa;
+      border-radius: 12px;
+      font-size: 12px;
+      border: 1px solid #e9ecef;
+      max-width: calc(50% - 3px);
+      min-width: fit-content;
+      flex-shrink: 0;
+    }
+    
+    .keyword-text {
+      cursor: pointer;
+      padding: 2px;
+      word-break: break-word;
+      min-width: 0;
+    }
+    
+    .remove-btn {
+      background: #dc3545;
       color: white;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 10px;
+      margin-left: 6px;
+      line-height: 1;
+      width: 16px;
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+    }
+    
+    .remove-btn:hover {
+      background-color: #c82333;
+    }
+    
+    .tag-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .clear-button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      background-color: #dc3545;
+      color: white;
+      transition: background-color 0.2s;
+    }
+    
+    .clear-button:hover {
+      background-color: #c82333;
+    }
+    
+    .action-buttons {
+      margin-top: 20px;
+    }
+    
+    .action-buttons button {
+      width: 100%;
       padding: 10px 15px;
       border: none;
       border-radius: 4px;
       cursor: pointer;
       margin-bottom: 8px;
-      width: 100%;
       font-size: 14px;
       font-weight: 500;
+      transition: background-color 0.2s;
     }
     
-    button:hover {
-      background-color: #3367d6;
-    }
-    
-    button.primary {
+    .primary {
       background-color: #4285f4;
+      color: white;
     }
     
-    button.primary:hover {
+    .primary:hover {
       background-color: #3367d6;
     }
     
-    button.secondary {
+    .secondary {
       background-color: #6c757d;
+      color: white;
     }
     
-    button.secondary:hover {
+    .secondary:hover {
       background-color: #5a6268;
     }
     
-    .action-buttons {
-      margin-top: 15px;
+    .status {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      padding: 12px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      max-width: 90%;
+      text-align: center;
+      display: none;
+      animation: slideDown 0.3s ease-out;
     }
     
-    .status {
-      margin-top: 10px;
-      padding: 8px;
-      border-radius: 4px;
-      font-size: 12px;
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
     }
     
     .status.success {
       background-color: #d4edda;
       color: #155724;
-      border: 1px solid #c3e6cb;
+      border: 2px solid #c3e6cb;
     }
     
     .status.error {
       background-color: #f8d7da;
       color: #721c24;
-      border: 1px solid #f5c6cb;
+      border: 2px solid #f5c6cb;
     }
     
-    .info-section {
-      background-color: #f0f8ff;
-      padding: 12px;
-      border-radius: 4px;
-      margin-bottom: 15px;
-      border-left: 4px solid #4285f4;
+    .toggle-option {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid #e9ecef;
     }
     
-    .info-section p {
-      margin: 5px 0;
-      font-size: 13px;
+    .toggle-option:last-child {
+      border-bottom: none;
     }
     
-    input[type="checkbox"] {
-      margin-right: 8px;
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #333;
+    }
+    
+    .toggle-switch {
+      position: relative;
+      width: 50px;
+      height: 26px;
+    }
+    
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: 0.4s;
+      border-radius: 26px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.4s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .slider {
+      background-color: #007bff;
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+    
+    .empty-state {
+      color: #6c757d;
+      font-style: italic;
+      text-align: center;
+      padding: 20px 0;
+      font-size: 14px;
+      width: 100%;
+    }
+    
+    .hidden {
+      display: none;
     }
   </style>
 </head>
 <body>
   <h3>LinkedIn Job Manager</h3>
   
-  <div class="info-section">
-    <p><strong>Status:</strong> <span id="status-text">Active on LinkedIn</span></p>
-    <p>This extension hides dismissed job cards and can auto-dismiss jobs with unwanted keywords.</p>
-  </div>
-  
   <div class="form-group">
-    <label>
-      <input type="checkbox" id="enableHiding" checked> Hide dismissed job cards
-    </label>
+    <div class="toggle-option">
+      <span class="toggle-label">Hide dismissed job cards</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableHiding" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div class="toggle-option">
+      <span class="toggle-label">Auto-dismiss jobs with keywords</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableDismissing">
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div class="toggle-option">
+      <span class="toggle-label">Auto-dismiss jobs from specific companies</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableCompanyBlocking">
+        <span class="slider"></span>
+      </label>
+    </div>
   </div>
   
-  <div class="form-group">
-    <label>
-      <input type="checkbox" id="enableDismissing"> Auto-dismiss jobs with keywords
-    </label>
+  <div class="form-group hidden" id="keywordsSection">
+    <label for="keywordInput">Filter Keywords</label>
+    <div class="tag-input-container">
+      <input type="text" id="keywordInput" class="tag-input" placeholder="Enter keyword to filter out">
+      <button type="button" id="addKeyword" class="add-button">Add</button>
+    </div>
+    <div class="tags-container" id="keywordTags">
+      <div class="empty-state">No keywords added yet</div>
+    </div>
+    <div class="tag-actions">
+      <button type="button" id="clearKeywords" class="clear-button">Clear All Keywords</button>
+    </div>
   </div>
   
-  <div class="form-group">
-    <label>
-      <input type="checkbox" id="enableCompanyBlocking"> Hide jobs from specific companies
-    </label>
-  </div>
-  
-  <div class="form-group" id="keywordsSection">
-    <label for="keywords">Keywords to dismiss (one per line):</label>
-    <textarea id="keywords" placeholder="job title 1
-job title 2
-job title 3"></textarea>
-  </div>
-  
-  <div class="form-group" id="companiesSection">
-    <label for="companies">Companies to hide (one per line):</label>
-    <textarea id="companies" placeholder="company name 1
-company name 2
-company name 3"></textarea>
+  <div class="form-group hidden" id="companiesSection">
+    <label for="companyInput">Company Names</label>
+    <div class="tag-input-container">
+      <input type="text" id="companyInput" class="tag-input" placeholder="Enter company name to block">
+      <button type="button" id="addCompany" class="add-button">Add</button>
+    </div>
+    <div class="tags-container" id="companyTags">
+      <div class="empty-state">No companies added yet</div>
+    </div>
+    <div class="tag-actions">
+      <button type="button" id="clearCompanies" class="clear-button">Clear All Companies</button>
+    </div>
   </div>
   
   <div class="action-buttons">
@@ -158,7 +359,7 @@ company name 3"></textarea>
     <button id="showHidden" class="secondary">Restore Hidden Jobs</button>
   </div>
   
-  <div id="status" class="status" style="display: none;"></div>
+  <div id="status" class="status"></div>
   
   <script src="popup.js"></script>
 </body>

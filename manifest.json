@@ -9,11 +9,11 @@
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "*://*.linkedin.com/*"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Domain Script Runner"
+    "default_popup": "popup/popup.html",
+    "default_title": "LinkedIn Job Manager"
   },
   "background": {
     "service_worker": "background.js"
@@ -23,6 +23,12 @@
       "matches": ["*://*.linkedin.com/*"],
       "js": ["content.js"],
       "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content.js"],
+      "matches": ["*://*.linkedin.com/*"]
     }
   ]
 }

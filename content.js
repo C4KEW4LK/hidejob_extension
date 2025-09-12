@@ -7,15 +7,15 @@
   // Configuration
   const CFG = {
     SEL: {
-      job: '.job-card-job-posting-card-wrapper[data-job-id]',
-      dismiss: 'button[aria-label*="Dismiss"][aria-label*="job"]',
-      company: '.artdeco-entity-lockup__subtitle div[dir="ltr"]',
-      companyFb: ['.job-card-container__company-name', '.job-card-list__company-name', '[data-control-name="company_name"]'],
-      listItem: 'li.ember-view.occludable-update, li',
-      dismissed: '.job-card-job-posting-card-wrapper--dismissed',
+      job: '.job-card-container[data-job-id]',
+      dismiss: 'button[aria-label*="Dismiss"]',
+      company: '.job-card-container__primary-description',
+      companyFb: ['.job-card-container__company-name', '.job-card-list__company-name', '[data-control-name="company_name"]', '.artdeco-entity-lockup__subtitle'],
+      listItem: 'li.scaffold-layout__list-item',
+      dismissed: '.job-card-list--is-dismissed',
       jobFb: ['[data-job-id]', '.job-card-container'],
-      dismissFb: ['button[aria-label*="dismiss"]', '.job-card-container__action button'],
-      titleFb: ['.job-card-list__title', '.job-card-container__title', '[data-control-name="job_title"]', 'h3 a'],
+      dismissFb: ['button[aria-label*="dismiss"]', 'button[aria-label*="undo"]', '.job-card-container__action button'],
+      titleFb: ['.job-card-list__title', '.job-card-container__title', '[data-control-name="job_title"]', 'h3 a', 'a.job-card-list__title--link'],
       containers: ['.jobs-search-results-list', '.scaffold-layout__list-detail-inner', 'main']
     },
     INT: { detect: 400, hide: 300, process: 400, flush: 10000 },
@@ -48,7 +48,7 @@
     escape: text => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; },
     rand: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
     safe: async (op, ctx, def = null) => { try { return await op(); } catch (e) { U.err(ctx, e); return def; } },
-    
+
     query: (sels, cont = document) => {
       if (typeof sels === 'string') sels = [sels];
       for (const sel of sels) {
@@ -56,13 +56,13 @@
       }
       return [];
     },
-    
+
     queryOne: (sels, cont = document) => U.query(sels, cont)[0] || null,
-    
+
     controller: () => { const c = new AbortController(); S.cleanup.controllers.add(c); return c; },
     interval: (fn, delay) => { const id = setInterval(fn, delay); S.cleanup.intervals.add(id); return id; },
     timeout: (fn, delay) => { const id = setTimeout(() => { S.cleanup.timeouts.delete(id); fn(); }, delay); S.cleanup.timeouts.add(id); return id; },
-    
+
     validJobId: id => id && typeof id === 'string' && id.trim().length > 0,
     addDismissed: id => { if (!U.validJobId(id) || S.data.dismissed.has(id)) return false; S.data.dismissed.add(id); S.data.batch.add(id); return true; },
     isScript: id => S.data.scriptDismissed.has(id) || S.data.pending.has(id)
@@ -71,12 +71,12 @@
   // Storage Queue
   const Store = {
     queue: [], processing: false,
-    
+
     add: op => new Promise((resolve, reject) => {
       Store.queue.push({ op, resolve, reject });
       Store.process();
     }),
-    
+
     async process() {
       if (Store.processing || !Store.queue.length) return;
       Store.processing = true;
@@ -124,7 +124,7 @@
         S.flags.autoDismiss = sync.linkedinAutoDismissFromListEnabled === true;
         S.flags.keywords = sync.linkedinDismissingEnabled === true;
         S.flags.companies = sync.linkedinCompanyBlockingEnabled === true;
-        
+
         const local = await chrome.storage.local.get(['dismissKeywords', 'blockedCompanies']);
         S.data.keywords = local.dismissKeywords || [];
         S.data.companies = local.blockedCompanies || [];
@@ -172,14 +172,14 @@
         console.log(`AUTO: Script flag or auto-dismissing attribute detected for job ${jobId}`);
         return true;
       }
-      
+
       const now = Date.now();
       if (now - this.lastManualTime < 50) {
         console.log(`AUTO: Rapid succession detected (${now - this.lastManualTime}ms gap) for job ${jobId}`);
         this.lastManualTime = now;
         return true;
       }
-      
+
       this.lastManualTime = now;
       console.log(`MANUAL: All checks passed for job ${jobId}`);
       return false;
@@ -189,41 +189,41 @@
       return U.safe(() => {
         const btns = U.query([CFG.SEL.dismiss, ...CFG.SEL.dismissFb]);
         let count = 0;
-        
+
         btns.forEach(btn => {
           if (this.buttons.has(btn)) return;
-          
+
           const wrap = btn.closest(CFG.SEL.job) || U.queryOne(CFG.SEL.jobFb, btn.parentElement);
           if (!wrap) return;
-          
+
           const jobId = wrap.getAttribute('data-job-id');
           if (!jobId) return;
 
           const ctrl = U.controller();
           this.controllers.set(btn, ctrl);
-          
+
           btn.addEventListener('click', evt => {
             console.log(`CLICK DETECTED on dismiss button for job ${jobId}`);
-            
+
             if (this.isAuto(btn, jobId, evt)) {
               console.log(`CLICK IGNORED - Detected as auto-dismissal for job ID ${jobId}`);
               return;
             }
-            
+
             console.log(`MANUAL CLICK CONFIRMED for job ID ${jobId}`);
-            
-            const title = this.extractTitle(wrap) || 
-                         (btn.getAttribute('aria-label') && typeof btn.getAttribute('aria-label') === 'string' ? 
+
+            const title = this.extractTitle(wrap) ||
+                         (btn.getAttribute('aria-label') && typeof btn.getAttribute('aria-label') === 'string' ?
                           btn.getAttribute('aria-label').replace(/dismiss|job/gi, '').trim() : '') ||
                          `Job ${jobId}`;
 
             const companyName = this.extractCompany(wrap) || 'Unknown Company';
             console.log(`Extracted title: "${title}" & company: "${companyName}" for job ${jobId}`);
-            
+
             U.addDismissed(jobId);
             S.data.lastManual = jobId;
             if (U.isExt()) chrome.storage.local.set({ lastManuallyDismissedJobId: jobId });
-            
+
             console.log(`DISPATCHING manualJobDismissed event for job ${jobId}`);
             window.dispatchEvent(new CustomEvent('manualJobDismissed', { detail: { jobId, jobTitle: title, companyName: companyName } }));
 
@@ -240,14 +240,14 @@
       }, 'attach', 0);
     },
 
-    detectGone: U.debounce(function() { 
+    detectGone: U.debounce(function() {
       return U.safe(() => {
         const current = new Set();
         U.query([CFG.SEL.job, ...CFG.SEL.jobFb]).forEach(w => {
           const id = w.getAttribute('data-job-id');
           if (id) current.add(id);
         });
-        
+
         let detected = 0;
         for (const id of S.data.prevJobs) {
           if (!current.has(id) && !S.data.dismissed.has(id) && !U.isScript(id)) {
@@ -258,14 +258,14 @@
             window.dispatchEvent(new CustomEvent('manualJobDismissed', { detail: { jobId: id, jobTitle: `Job ${id}`, companyName: 'Unknown' } }));
           }
         }
-        
+
         [...S.data.scriptDismissed].forEach(id => {
           if (!current.has(id)) {
             S.data.scriptDismissed.delete(id);
             S.data.pending.delete(id);
           }
         });
-        
+
         const currentBtns = new Set(U.query([CFG.SEL.dismiss, ...CFG.SEL.dismissFb]));
         if (Jobs.controllers && Jobs.controllers.entries) {
           for (const [btn, ctrl] of Jobs.controllers.entries()) {
@@ -277,13 +277,13 @@
             }
           }
         }
-        
+
         S.data.prevJobs = current;
         return detected;
       }, 'detectGone', 0);
     }, CFG.TIME.debounce),
 
-    init() { 
+    init() {
       return U.safe(() => {
         S.data.prevJobs = new Set();
         U.query([CFG.SEL.job, ...CFG.SEL.jobFb]).forEach(w => {
@@ -303,7 +303,7 @@
           const id = wrap.getAttribute('data-job-id');
           if (!id) return;
           const stored = S.data.dismissed.has(id);
-          const visual = wrap.classList.contains('job-card-job-posting-card-wrapper--dismissed') || 
+          const visual = wrap.classList.contains('job-card-list--is-dismissed') ||
                         wrap.closest(CFG.SEL.dismissed) || wrap.querySelector('[class*="dismissed"]');
           if (stored || visual) {
             const item = wrap.closest(CFG.SEL.listItem) || wrap.parentElement;
@@ -324,7 +324,7 @@
     async process() {
       let dismissed = 0, companies = 0;
       if (!S.flags.keywords && !S.flags.companies && !S.flags.autoDismiss) return { dismissed: 0, companies: 0 };
-      
+
       return U.safe(async () => {
         const wraps = U.query([CFG.SEL.job, ...CFG.SEL.jobFb]);
         if (!wraps.length) return { dismissed: 0, companies: 0 };
@@ -340,7 +340,7 @@
 
           const title = btn.getAttribute('aria-label') || 'N/A';
           const company = this.extractCompany(wrap);
-          const visual = wrap.classList.contains('job-card-job-posting-card-wrapper--dismissed') ||
+          const visual = wrap.classList.contains('job-card-list--is-dismissed') ||
                         wrap.closest(CFG.SEL.dismissed) || wrap.querySelector('[class*="dismissed"]');
 
           if (visual) {
@@ -406,7 +406,7 @@
       try {
         let el = wrap.querySelector(CFG.SEL.company);
         if (el) return el.textContent.trim();
-        
+
         for (const sel of CFG.SEL.companyFb) {
           el = wrap.querySelector(sel);
           if (el) {
@@ -414,6 +414,9 @@
             if (text.length > 0 && text.length < 100) return text;
           }
         }
+        const subtitle = wrap.querySelector('.artdeco-entity-lockup__subtitle');
+        if (subtitle) return subtitle.textContent.trim();
+
         return '';
       } catch (error) {
         U.err('extractCompany', error);
@@ -423,26 +426,33 @@
 
     extractTitle(wrap) {
       try {
+        const titleLink = wrap.querySelector('a.job-card-list__title--link');
+        if (titleLink) {
+            const visibleSpan = titleLink.querySelector('span[aria-hidden="true"]');
+            if(visibleSpan) return visibleSpan.textContent.trim();
+            return titleLink.textContent.trim();
+        }
+
         const btn = U.queryOne([CFG.SEL.dismiss, ...CFG.SEL.dismissFb], wrap);
         if (btn) {
           const label = btn.getAttribute('aria-label');
           if (label && typeof label === 'string') {
-            const match = label.match(/Dismiss\s+(.+?)\s+job/i);
+            const match = label.match(/(?:Dismiss|undo)\s+(.+?)\s+job/i);
             if (match && match[1]) {
               const title = match[1].trim();
               if (title && !['this', 'the', 'a', 'an'].includes(title.toLowerCase())) return title;
             }
-            const cleaned = label.replace(/dismiss|job/gi, '').trim();
+            const cleaned = label.replace(/dismiss|job|is dismissed, undo/gi, '').trim();
             if (cleaned && cleaned.length > 2) return cleaned;
           }
         }
-        
+
         const titleSelectors = [
           '.job-card-list__title a span[aria-hidden="true"]', '.job-card-list__title a', '.job-card-list__title',
           '.job-card-container__title a', '.job-card-container__title', '[data-control-name="job_title"]',
-          '.artdeco-entity-lockup__title', 'h3 a span[aria-hidden="true"]', 'h3 a', 'h3', '.job-card-container__link'
+          '.artdeco-entity-lockup__title a', 'h3 a span[aria-hidden="true"]', 'h3 a', 'h3', '.job-card-container__link'
         ];
-        
+
         for (const sel of titleSelectors) {
           const el = wrap.querySelector(sel);
           if (el && el.textContent) {
@@ -452,7 +462,7 @@
             }
           }
         }
-        
+
         const parentSelectors = ['.job-card-container', '.job-card-list__item', '.jobs-search-results__list-item'];
         for (const parentSel of parentSelectors) {
           const parent = wrap.closest(parentSel) || wrap;
@@ -506,7 +516,7 @@
         if (!id) return { success: false, message: 'No recent dismissal to undo' };
 
         const popupData = UI.popups.get(id);
-        let title = popupData?.title; 
+        let title = popupData?.title;
 
         S.data.dismissed.delete(id);
         S.data.scriptDismissed.delete(id);
@@ -514,11 +524,11 @@
         S.data.batch.delete(id);
 
         const wrap = U.queryOne([`${CFG.SEL.job}[data-job-id="${id}"]`, ...CFG.SEL.jobFb.map(s => `${s}[data-job-id="${id}"]`)]);
-        
+
         if (!title) {
             title = this.extractTitle(wrap) || `Job ${id}`;
         }
-        
+
         if (wrap) {
           const item = wrap.closest(CFG.SEL.listItem) || wrap.parentElement;
           if (item) {
@@ -526,7 +536,7 @@
             item.removeAttribute('data-hidden');
             wrap.removeAttribute('data-hidden');
             wrap.removeAttribute('data-script-dismissed');
-            wrap.classList.remove('job-card-job-posting-card-wrapper--dismissed');
+            wrap.classList.remove('job-card-list--is-dismissed');
           }
         }
 
@@ -540,7 +550,7 @@
         }));
 
         if (!specificId || specificId === S.data.lastManual) S.data.lastManual = null;
-        
+
         return { success: true, message: `Restored "${title}"`, jobId: id, jobTitle: title };
       }, 'undo', { success: false, message: 'Error undoing dismissal' });
     }
@@ -560,9 +570,9 @@
         @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
         @keyframes popupSlideIn { from { transform: translateX(100%) scale(0.9); opacity: 0; } to { transform: translateX(0) scale(1); opacity: 1; } }
         @keyframes popupSlideOut { from { transform: translateX(0) scale(1); opacity: 1; } to { transform: translateX(100%) scale(0.9); opacity: 0; } }
-        .ljm-popup { 
+        .ljm-popup {
           transition: all 0.2s ease;
-          will-change: transform; 
+          will-change: transform;
         }
       `;
       document.head.appendChild(style);
@@ -574,16 +584,16 @@
     createPopup(jobId, title, companyName) {
         console.log(`Creating popup for job ${jobId}: "${title}" from company: "${companyName}"`);
         this.removePopup(jobId);
-        
+
         const popup = document.createElement('div');
         popup.id = `ljm-undo-${jobId}`;
         popup.className = 'ljm-popup';
-        
+
         const posIndex = this.popups.size;
         const topPos = CFG.UI.topPos + (posIndex * CFG.UI.spacing);
         const shortTitle = title.length > CFG.UI.maxTitle ? title.substring(0, CFG.UI.maxTitle) + '...' : title;
         const displayCompany = companyName || 'Dismissal';
-        
+
         popup.style.cssText = `
             position: fixed !important; top: ${topPos}px !important; right: 20px !important;
             z-index: ${CFG.UI.zIndex + posIndex} !important; min-width: 280px !important; max-width: 320px !important;
@@ -605,9 +615,9 @@
             </div>
             </div>
         `;
-        
+
         document.body.appendChild(popup);
-        
+
         const ctrl = U.controller();
         this.controllers.set(jobId, ctrl);
         this.popups.set(jobId, { element: popup, position: posIndex, timeout: null, title, companyName });
@@ -617,7 +627,7 @@
             console.log(`Undo button clicked for job ${jobId}`);
             const result = await Jobs.undo(jobId);
             this.removePopup(jobId);
-            
+
             if (result.success) {
                 this.showMessage(`Success: Job "${result.jobTitle || shortTitle}" restored`, 'success');
             } else {
@@ -629,7 +639,7 @@
             popup.style.background = 'linear-gradient(135deg, #004182 0%, #002a5c 100%)';
             popup.style.transform = 'translateX(-5px) scale(1.02)';
         }, { signal });
-        
+
         popup.addEventListener('mouseleave', () => {
             popup.style.background = 'linear-gradient(135deg, #0a66c2 0%, #004182 100%)';
             popup.style.transform = 'translateX(0) scale(1)';
@@ -644,9 +654,9 @@
         `;
         close.addEventListener('mouseenter', () => { close.style.background = 'rgba(255, 255, 255, 0.2)'; close.style.color = 'white'; }, { signal });
         close.addEventListener('mouseleave', () => { close.style.background = 'none'; close.style.color = 'rgba(255, 255, 255, 0.7)'; }, { signal });
-        close.addEventListener('click', e => { 
-            e.stopPropagation(); 
-            this.removePopup(jobId); 
+        close.addEventListener('click', e => {
+            e.stopPropagation();
+            this.removePopup(jobId);
         }, { signal });
         popup.appendChild(close);
 
@@ -693,9 +703,9 @@
       const remaining = [...this.popups.entries()].sort((a, b) => a[1].position - b[1].position);
       remaining.forEach(([id, data], i) => {
         const newTop = CFG.UI.topPos + (i * CFG.UI.spacing);
-        if (data.element) { 
-            data.element.style.top = `${newTop}px`; 
-            data.element.style.zIndex = `${CFG.UI.zIndex + i}`; 
+        if (data.element) {
+            data.element.style.top = `${newTop}px`;
+            data.element.style.zIndex = `${CFG.UI.zIndex + i}`;
         }
         data.position = i;
       });
@@ -703,17 +713,17 @@
 
     show(jobId, title, companyName) {
       console.log(`UI.show called with jobId: ${jobId}, title: "${title}", company: "${companyName}"`);
-      
+
       if (U.isScript(jobId)) {
         console.log(`Not showing popup - job ${jobId} is script dismissed`);
         return;
       }
-      
+
       const wrap = U.queryOne([`${CFG.SEL.job}[data-job-id="${jobId}"]`, ...CFG.SEL.jobFb.map(s => `${s}[data-job-id="${jobId}"]`)]);
-      
+
       const finalTitle = title || Jobs.extractTitle(wrap) || `Job ${jobId}`;
       const finalCompany = companyName || Jobs.extractCompany(wrap) || 'Dismissal';
-      
+
       console.log(`Creating popup for job ${jobId}: "${finalTitle}" from company "${finalCompany}"`);
       this.createPopup(jobId, finalTitle, finalCompany);
     },
@@ -732,7 +742,7 @@
       `;
       div.textContent = msg;
       document.body.appendChild(div);
-      
+
       U.timeout(() => {
         div.style.animation = 'slideOut 0.3s ease';
         U.timeout(() => div.parentNode?.removeChild(div), 300);
@@ -983,11 +993,11 @@
   window.addEventListener('manualJobDismissed', e => {
     const { jobId, jobTitle, companyName } = e.detail;
     console.log(`RECEIVED manualJobDismissed event for: "${jobTitle}" from "${companyName}" (${jobId})`);
-    
+
     UI.show(jobId, jobTitle, companyName);
-    
+
     console.log(`Attempted to show undo popup for: "${jobTitle}" (${jobId})`);
-    
+
     if (S.flags.hiding) {
       const wrap = U.queryOne([`${CFG.SEL.job}[data-job-id="${jobId}"]`, ...CFG.SEL.jobFb.map(s => `${s}[data-job-id="${jobId}"]`)]);
       if (wrap) {

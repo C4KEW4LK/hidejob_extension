@@ -1155,6 +1155,34 @@
       });
     },
 
+    setupStorageListener() {
+      if (!U.isExt()) return;
+      chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace !== 'sync') return;
+
+        let settingsChanged = false;
+        const keysToUpdate = {
+          dismissKeywords: (value) => { S.data.keywords = value || []; U.log('Keywords updated via sync'); },
+          blockedCompanies: (value) => { S.data.companies = value || []; U.log('Companies updated via sync'); },
+          linkedinHiderEnabled: (value) => S.flags.hiding = value !== false,
+          linkedinDismissingEnabled: (value) => S.flags.keywords = value === true,
+          linkedinCompanyBlockingEnabled: (value) => S.flags.companies = value === true
+        };
+
+        for (const key in changes) {
+          if (keysToUpdate[key]) {
+            keysToUpdate[key](changes[key].newValue);
+            settingsChanged = true;
+          }
+        }
+
+        if (settingsChanged) {
+          U.log('Settings changed from sync, restarting services.');
+          Controls.restart();
+        }
+      });
+    },
+
     async handle(req, send) {
       const { action } = req;
       switch (action) {
@@ -1284,6 +1312,7 @@
         Cleanup.setup();
         UI.addStyles();
         Msg.setup();
+        Msg.setupStorageListener();
         Nav.setup();
         await this.loadAndStart();
         this.initialized = true;

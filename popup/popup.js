@@ -10,6 +10,7 @@ class LinkedInJobManager {
     this.cacheElements();
     this.loadSettings();
     this.bindEvents();
+    this.bindStorageListener();
     // Set initial tab state on load
     this.handleTabClick(document.querySelector('.tab-button.active'));
   }
@@ -53,6 +54,34 @@ class LinkedInJobManager {
       this.keywords.sort();
       this.companies.sort();
       this.renderTags();
+    });
+  }
+
+  bindStorageListener() {
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace !== 'sync') return;
+
+      const updates = {
+        dismissKeywords: (value) => {
+          this.keywords = value || [];
+          this.keywords.sort();
+          this.renderKeywordTags();
+        },
+        blockedCompanies: (value) => {
+          this.companies = value || [];
+          this.companies.sort();
+          this.renderCompanyTags();
+        },
+        linkedinHiderEnabled: (value) => this.elements.enableHiding.checked = value !== false,
+        linkedinDismissingEnabled: (value) => this.elements.enableDismissing.checked = value === true,
+        linkedinCompanyBlockingEnabled: (value) => this.elements.enableCompanyBlocking.checked = value === true
+      };
+
+      for (const key in changes) {
+        if (updates[key]) {
+          updates[key](changes[key].newValue);
+        }
+      }
     });
   }
 
@@ -145,7 +174,7 @@ class LinkedInJobManager {
   addKeyword() {
     const keywords = this.elements.keywordInput.value
       .split(/[\n,]+/)   // split on newlines or commas only
-      .map(k => k.trim().toLowerCase())
+      .map(k => k.trim().toLowerCase().replace(/"/g, ''))
       .filter(k => k);
     if (!keywords.length) { this.showStatus('Please enter one or more keywords', 'error'); return; }
     let addedCount = 0;
@@ -156,13 +185,14 @@ class LinkedInJobManager {
       this.keywords.sort(); this.renderKeywordTags(); this.saveKeywords();
       this.elements.keywordInput.value = '';
       this.showStatus(`Added ${addedCount} new keyword(s)`, 'success');
-    } else { this.showStatus('Keyword(s) already exist', 'error'); }
+    }
+    else { this.showStatus('Keyword(s) already exist', 'error'); }
   }
 
   addCompany() {
     const companies = this.elements.companyInput.value
       .split(/[\n,]+/)   // split on newlines or commas only
-      .map(c => c.trim().toLowerCase())
+      .map(c => c.trim().toLowerCase().replace(/"/g, ''))
       .filter(c => c);
     if (!companies.length) { this.showStatus('Please enter one or more company names', 'error'); return; }
     let addedCount = 0;
@@ -173,7 +203,8 @@ class LinkedInJobManager {
       this.companies.sort(); this.renderCompanyTags(); this.saveCompanies();
       this.elements.companyInput.value = '';
       this.showStatus(`Added ${addedCount} new company/companies`, 'success');
-    } else { this.showStatus('Company/companies already exist', 'error'); }
+    }
+    else { this.showStatus('Company/companies already exist', 'error'); }
   }
 
   removeKeyword(keyword) {

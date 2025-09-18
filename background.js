@@ -4,23 +4,40 @@
 // Extension lifecycle management
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('LinkedIn Job Manager installed/updated:', details.reason);
-  
+
   if (details.reason === 'install') {
-    chrome.storage.sync.set({
-      linkedinHiderEnabled: true,
-      linkedinAutoDismissFromListEnabled: false,
-      linkedinDismissingEnabled: false,
-      linkedinCompanyBlockingEnabled: false,
-      dismissKeywords: [],
-      blockedCompanies: [],
-      dismissedJobIds: []
+    // Check if settings already exist to avoid overwriting them on new device sync
+    chrome.storage.sync.get([
+      'linkedinHiderEnabled',
+      'dismissKeywords',
+      'blockedCompanies'
+    ], (existingSettings) => {
+      const defaultSettings = {
+        linkedinHiderEnabled: true,
+        linkedinAutoDismissFromListEnabled: false,
+        linkedinDismissingEnabled: false,
+        linkedinCompanyBlockingEnabled: false,
+        dismissKeywords: [],
+        blockedCompanies: []
+        // Note: dismissedJobIds are managed separately and chunked, so we don't set a default here.
+      };
+
+      const settingsToSet = {};
+      let isNewInstall = true;
+
+      // Check if any core setting is already defined.
+      if (existingSettings.linkedinHiderEnabled !== undefined || existingSettings.dismissKeywords !== undefined) {
+        isNewInstall = false;
+        console.log('Existing settings found in sync storage. Skipping default setup.');
+      }
+
+      if (isNewInstall) {
+        console.log('No existing settings found. Initializing defaults.');
+        chrome.storage.sync.set(defaultSettings);
+        chrome.storage.local.set({ dismissedJobIds: [] });
+        console.log('Default settings initialized');
+      }
     });
-    
-    chrome.storage.local.set({
-      dismissedJobIds: []
-    });
-    
-    console.log('Default settings initialized');
   }
 });
 
@@ -93,28 +110,7 @@ chrome.action.onClicked.addListener((tab) => {
   }
 });
 
-// Clean up storage periodically (optional)
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'cleanup-storage') {
-    console.log('Running periodic storage cleanup for sync');
-    
-    // Clean up very old dismissed job IDs from sync storage to prevent bloat
-    chrome.storage.sync.get(['dismissedJobIds'], (result) => {
-      if (result.dismissedJobIds && result.dismissedJobIds.length > 5500) { // A little buffer over 5000
-        // Keep only the most recent 5000 job IDs
-        const recentJobIds = result.dismissedJobIds.slice(-5000);
-        chrome.storage.sync.set({ dismissedJobIds: recentJobIds });
-        console.log(`Cleaned up sync storage: ${result.dismissedJobIds.length} -> ${recentJobIds.length} job IDs`);
-      }
-    });
-  }
-});
 
-// Set up periodic cleanup (once per day)
-chrome.alarms.create('cleanup-storage', { 
-  delayInMinutes: 1440, // 24 hours
-  periodInMinutes: 1440 
-});
 
 // Handle extension suspension/resumption
 self.addEventListener('suspend', () => {

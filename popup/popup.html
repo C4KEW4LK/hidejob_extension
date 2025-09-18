@@ -3,335 +3,358 @@
 <head>
   <meta charset="utf-8">
   <style>
-    body {
-      width: 400px;
-      padding: 20px;
-      font-family: Arial, sans-serif;
-      margin: 0;
-      background-color: #f4f7f6;
-      color: #333;
+    /* Google Font Import */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* CSS Variables for easy theming */
+    :root {
+      --bg-color: #f4f7f9;
+      --card-bg: #ffffff;
+      --primary-text: #1a202c;
+      --secondary-text: #5a6474;
+      --border-color: #e2e8f0;
+      --accent-color: #0073b1; /* LinkedIn Blue */
+      --accent-hover: #005a8a;
+      --danger-color: #e53e3e;
+      --danger-hover: #c53030;
+      --success-color: #38a169;
+      --tag-bg: #edf2f7;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
     }
-    
-    h3 {
-      margin-top: 0;
-      color: #0a66c2;
-      border-bottom: 2px solid #e0e0e0;
-      padding-bottom: 10px;
+
+    /* Base Styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 420px;
+      padding: 16px;
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--primary-text);
+      font-size: 14px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
       margin-bottom: 20px;
     }
-    
-    .form-group {
-      margin-bottom: 15px;
-      background-color: #ffffff;
-      padding: 15px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    .header h3 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--primary-text);
+    }
+    .header p {
+      font-size: 13px;
+      color: var(--secondary-text);
     }
 
-    .form-group.form-group-toggle {
-      display: flex;
-      align-items: center;
-      gap: 10px;
+    /* Card Layout */
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border-color);
     }
-    
+    .card:last-of-type {
+        margin-bottom: 0;
+    }
+
+    /* Toggle Switches */
+    .toggle-option {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .toggle-option:last-child {
+      border-bottom: none;
+    }
+    .toggle-label {
+      font-weight: 500;
+    }
     .toggle-switch {
       position: relative;
-      display: inline-block;
-      width: 40px;
+      width: 44px;
       height: 24px;
-      vertical-align: middle;
-      -webkit-appearance: none;
-      outline: none;
     }
-
-    .toggle-switch:before {
-      content: "";
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
       position: absolute;
-      width: 40px;
-      height: 24px;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
       background-color: #ccc;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: background-color 0.3s;
+      transition: .4s;
+      border-radius: 24px;
     }
-
-    .toggle-switch:checked:before {
-      background-color: #0a66c2;
-    }
-
-    .toggle-switch:after {
-      content: "";
+    .slider:before {
       position: absolute;
-      left: 2px;
-      top: 2px;
-      width: 20px;
-      height: 20px;
+      content: "";
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
       background-color: white;
+      transition: .4s;
       border-radius: 50%;
-      transition: transform 0.3s;
-      cursor: pointer;
     }
+    input:checked + .slider { background-color: var(--accent-color); }
+    input:checked + .slider:before { transform: translateX(20px); }
 
-    .toggle-switch:checked:after {
-      transform: translateX(16px);
+    /* Tab Navigation */
+    .tab-nav {
+      display: flex;
+      border-bottom: 2px solid var(--border-color);
+      margin-bottom: 16px;
     }
-    
-    label {
-      font-weight: bold;
-      color: #333;
-      flex-grow: 1;
+    .tab-button {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
       cursor: pointer;
+      background: none;
+      border: none;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--secondary-text);
+      position: relative;
+      transition: color 0.3s ease;
+    }
+    .tab-button:hover {
+      color: var(--primary-text);
+    }
+    .tab-button.active {
+      color: var(--accent-color);
+    }
+    .tab-button.active::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background-color: var(--accent-color);
     }
     
+    .hidden { display: none; }
+
+    /* Textarea & Input Container */
     .tag-input-container {
       display: flex;
       gap: 8px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
+      align-items: flex-start; /* Align items to the top */
     }
-    
-    .tag-input {
-      flex-grow: 1;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      box-sizing: border-box;
-      font-size: 14px;
-    }
-    
-    .add-button {
-      background-color: #0a66c2;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: background-color 0.2s;
-    }
-    
-    .add-button:hover {
-      background-color: #004182;
-    }
-    
-    .tags-container {
-      border: 1px solid #e0e0e0;
-      border-radius: 4px;
+    textarea.tag-input {
+      flex: 1;
       padding: 10px;
-      min-height: 50px;
-      background-color: #f9f9f9;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 44px; /* Match button height */
+      line-height: 1.5;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    textarea.tag-input:focus {
+      outline: none;
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 3px rgba(0, 115, 177, 0.15);
+    }
+
+    .add-button {
+        background-color: var(--accent-color);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 16px;
+        font-weight: 600;
+        font-size: 14px;
+        font-family: 'Inter', sans-serif;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+        flex-shrink: 0;
+    }
+    .add-button:hover {
+        background-color: var(--accent-hover);
+    }
+
+    /* Tags Container & Items */
+    .tags-container {
+      min-height: 100px;
+      max-height: 180px;
+      overflow-y: auto;
+      background-color: var(--bg-color);
+      border: 1px dashed var(--border-color);
+      border-radius: 8px;
+      padding: 8px;
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      align-items: center;
-      /* Added for scrollable containers */
-      max-height: 300px; /* Set max height */
-      overflow-y: auto;  /* Enable vertical scrollbar when content overflows */
+      align-content: flex-start;
     }
-    
     .keyword-item {
-      background-color: #e0f2f7;
-      color: #0a66c2;
-      padding: 6px 10px;
-      border-radius: 20px;
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 5px;
-      font-size: 13px;
+      background-color: var(--tag-bg);
+      color: var(--primary-text);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid var(--border-color);
     }
-    
     .remove-btn {
       background: none;
       border: none;
-      color: #0a66c2;
-      font-weight: bold;
+      color: var(--secondary-text);
       cursor: pointer;
       font-size: 16px;
       line-height: 1;
-      padding: 0 0 2px 0;
+      margin-left: 6px;
+      transition: color 0.2s;
     }
-    
     .remove-btn:hover {
-      color: #004182;
+      color: var(--danger-color);
+    }
+    .empty-state {
+      width: 100%;
+      text-align: center;
+      padding: 20px;
+      color: var(--secondary-text);
+      font-style: italic;
     }
     
-    .empty-state {
-      color: #999;
-      font-style: italic;
-      padding: 10px;
-      text-align: center;
+    /* Action Buttons (for export/clear) */
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 12px;
+      transition: all 0.2s ease;
+    }
+
+    .button-secondary {
+      background-color: var(--card-bg);
+      color: var(--primary-text);
+      border: 1px solid var(--border-color);
+    }
+    .button-secondary:hover {
+      background-color: var(--bg-color);
+      border-color: #c8d0da;
     }
     
     .tag-actions {
-      margin-top: 10px;
-      text-align: right;
-    }
-    
-    .clear-button {
-      background-color: #f44336;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: background-color 0.2s;
-    }
-    
-    .clear-button:hover {
-      background-color: #d32f2f;
-    }
-    
-    .action-buttons {
-      margin-top: 25px;
       display: flex;
-      flex-direction: column;
-      gap: 10px;
+      gap: 8px;
+      margin-top: 12px;
     }
     
-    .primary {
-      background-color: #0a66c2;
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      transition: background-color 0.2s, transform 0.1s;
+    .button-danger {
+        background-color: var(--card-bg);
+        color: var(--danger-color);
+        border: 1px solid var(--danger-color);
+    }
+    .button-danger:hover {
+        background-color: var(--danger-color);
+        color: white;
     }
     
-    .primary:hover {
-      background-color: #004182;
-      transform: translateY(-1px);
-    }
-    
-    .secondary {
-      background-color: #666;
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 16px;
-      font-weight: bold;
-      transition: background-color 0.2s, transform 0.1s;
-    }
-    
-    .secondary:hover {
-      background-color: #555;
-      transform: translateY(-1px);
-    }
-
+    /* Status Message */
     .status {
-      display: none;
-      /* Position fixed to float above content */
-      position: fixed;
-      top: 20px; /* Adjust as needed */
-      right: 20px; /* Adjust as needed */
-      z-index: 10002; /* Ensure it's above other elements, including undo button */
-      width: auto; /* Allow width to adjust to content */
-      max-width: 350px; /* Increased max-width */
-      padding: 15px 20px; /* Increased padding */
-      border-radius: 8px; /* Slightly more rounded corners */
-      font-weight: bold;
-      text-align: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15); /* More prominent shadow */
-      animation: slideIn 0.3s ease-out forwards; /* Add animation */
-      font-size: 16px; /* Increased font size */
+        position: fixed;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 500;
+        box-shadow: var(--shadow);
+        z-index: 100;
+        display: none;
     }
-
-    .status.success {
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-
-    .status.error {
-      background-color: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
-
-    .status.info {
-      background-color: #d1ecf1;
-      color: #0c5460;
-      border: 1px solid #bee5eb;
-    }
-
-    .status.warning {
-      background-color: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeeba;
-    }
-
-    /* Keyframe animations for slide in/out */
-    @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    @keyframes slideOut {
-      from { transform: translateX(0); opacity: 1; }
-      to { transform: translateX(100%); opacity: 0; }
-    }
+    .status.success { background-color: var(--success-color); color: white; }
+    .status.error { background-color: var(--danger-color); color: white; }
   </style>
 </head>
 <body>
-  <h3>LinkedIn Job Manager</h3>
+
+  <div class="header">
+    <h3>Job Manager</h3>
+    <p>Automate your LinkedIn job search</p>
+  </div>
+
+  <div class="card">
+    <div class="toggle-option">
+      <span class="toggle-label">Hide Dismissed Jobs</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableHiding" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-option">
+      <span class="toggle-label">Filter by Keywords</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableDismissing">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-option">
+      <span class="toggle-label">Filter by Companies</span>
+      <label class="toggle-switch">
+        <input type="checkbox" id="enableCompanyBlocking">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="tab-nav">
+      <button class="tab-button active" data-target="keywordsSection">Keywords</button>
+      <button class="tab-button" data-target="companiesSection">Companies</button>
+    </div>
+
+    <div id="keywordsSection" class="tab-content">
+      <div class="tag-input-container">
+        <textarea id="keywordInput" class="tag-input" placeholder="Add keywords..."></textarea>
+        <button id="addKeyword" class="add-button">Add</button>
+      </div>
+      <div class="tags-container" id="keywordTags"></div>
+      <div class="tag-actions">
+        <button id="exportKeywords" class="button button-secondary">Export</button>
+        <button id="clearKeywords" class="button button-danger">Clear All</button>
+      </div>
+    </div>
+    
+    <div id="companiesSection" class="tab-content hidden">
+      <div class="tag-input-container">
+        <textarea id="companyInput" class="tag-input" placeholder="Add companies..."></textarea>
+        <button id="addCompany" class="add-button">Add</button>
+      </div>
+      <div class="tags-container" id="companyTags"></div>
+      <div class="tag-actions">
+        <button id="exportCompanies" class="button button-secondary">Export</button>
+        <button id="clearCompanies" class="button button-danger">Clear All</button>
+      </div>
+    </div>
+  </div>
   
   <div id="status" class="status"></div>
-
-  <div class="form-group form-group-toggle">
-    <input type="checkbox" id="enableHiding" class="toggle-switch">
-    <label for="enableHiding">Hide dismissed job cards</label>
-  </div>
-
-  <div class="form-group form-group-toggle">
-    <input type="checkbox" id="enableAutoDismissFromList" class="toggle-switch">
-    <label for="enableAutoDismissFromList">Auto-dismiss from Dismissed Job IDs</label>
-  </div>
-  
-  <div class="form-group form-group-toggle">
-    <input type="checkbox" id="enableDismissing" class="toggle-switch">
-    <label for="enableDismissing">Auto-dismiss jobs with keywords</label>
-  </div>
-  
-  <div class="form-group form-group-toggle">
-    <input type="checkbox" id="enableCompanyBlocking" class="toggle-switch">
-    <label for="enableCompanyBlocking">Auto-dismiss jobs from specific companies</label>
-  </div>
-
-  <div class="form-group" id="keywordsSection">
-    <label for="keywordInput">Filter Keywords</label>
-    <div class="tag-input-container">
-      <input type="text" id="keywordInput" class="tag-input" placeholder="Enter keyword to filter out">
-      <button type="button" id="addKeyword" class="add-button">Add</button>
-    </div>
-    <div class="tags-container" id="keywordTags">
-      <div class="empty-state">No keywords added yet</div>
-    </div>
-    <div class="tag-actions">
-      <button type="button" id="clearKeywords" class="clear-button">Clear All Keywords</button>
-    </div>
-  </div>
-  
-  <div class="form-group" id="companiesSection">
-    <label for="companyInput">Company Names</label>
-    <div class="tag-input-container">
-      <input type="text" id="companyInput" class="tag-input" placeholder="Enter company name to block">
-      <button type="button" id="addCompany" class="add-button">Add</button>
-    </div>
-    <div class="tags-container" id="companyTags">
-      <div class="empty-state">No companies added yet</div>
-    </div>
-    <div class="tag-actions">
-      <button type="button" id="clearCompanies" class="clear-button">Clear All Companies</button>
-    </div>
-  </div>
-  
-  <div class="action-buttons">
-    <button id="clearDismissed" class="clear-button">Clear All Dismissed Jobs</button>
-  </div>
   
   <script src="popup.js"></script>
 </body>

@@ -1,5 +1,5 @@
 // LinkedIn Job Manager - Optimized Content Script
-(function() {
+(function () {
   'use strict';
 
   if (window.LinkedInJobManager) return;
@@ -23,6 +23,9 @@
     UI: { maxTitle: 60, topPos: 80, spacing: 80, zIndex: 10000 }
   };
 
+  const BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const ID_LENGTH = 6;
+
   // State
   const S = {
     int: { hide: null, process: null, detect: null, flush: null },
@@ -30,6 +33,7 @@
     flags: { hiding: true, autoDismiss: false, keywords: false, companies: false },
     data: {
       keywords: [], companies: [], dismissed: new Set(), batch: new Set(),
+      justUndone: new Set(),
       lastManual: null, prevJobs: new Set(), scriptDismissed: new Set(), pending: new Set()
     },
     stats: { dismissed: 0, hidden: 0, companyHidden: 0 },
@@ -42,7 +46,72 @@
   const U = {
     isExt: () => { try { return chrome?.runtime?.id; } catch { return false; } },
     log: (msg, data) => console.log(`LinkedIn Job Manager: ${msg}`, data || ''),
-    err: (ctx, e) => console.error(`LinkedIn Job Manager [${ctx}]:`, e),
+    err: (ctx, e) => {
+      if (e) {
+        console.error(`LinkedIn Job Manager [${ctx}]:`, e);
+      } else {
+        console.error(`LinkedIn Job Manager [${ctx}]: An unknown or cross-origin error occurred.`);
+      }
+    },
+    debounce: (fn, wait) => { let t; return (...args) => { clearTimeout(t); S.cleanup.timeouts.delete(t); t = setTimeout(() => { S.cleanup.timeouts.delete(t); fn(...args); }, wait); S.cleanup.timeouts.add(t); }; },
+    sanitize: text => text && text.trim ? text.trim().toLowerCase() : '',
+    escape: text => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; },
+    rand: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
+    safe: async (op, ctx, def = null) => { try { return await op(); } catch (e) { U.err(ctx, e); return def; } },
+
+    query: (sels, cont = document) => {
+      if (typeof sels === 'string') sels = [sels];
+      for (const sel of sels) {
+        try { const els = cont.querySelectorAll(sel); if (els.length) return [...els]; } catch (e) { U.err(`query ${sel}`, e); }
+      }
+      return [];
+    },
+
+    queryOne: (sels, cont = document) => U.query(sels, cont)[0] || null,
+
+    controller: () => { const c = new AbortController(); S.cleanup.controllers.add(c); return c; },
+    interval: (fn, delay) => { const id = setInterval(fn, delay); S.cleanup.intervals.add(id); return id; },
+    timeout: (fn, delay) => { const id = setTimeout(() => { S.cleanup.timeouts.delete(id); fn(); }, delay); S.cleanup.timeouts.add(id); return id; },
+
+    encodeJobId: number => {
+      if (!number || isNaN(number)) return BASE64_CHARS[0].repeat(ID_LENGTH);
+      let n = parseInt(number);
+      if (n === 0) return BASE64_CHARS[0].repeat(ID_LENGTH);
+      let encoded = "";
+      while (n > 0) {
+        encoded = BASE64_CHARS[n % 64] + encoded;
+        n = Math.floor(n / 64);
+      }
+      return encoded.padStart(ID_LENGTH, BASE64_CHARS[0]);
+    },
+
+    decodeJobId: encoded => {
+      if (!encoded || typeof encoded !== 'string') return null;
+      let decoded = 0;
+      for (let i = 0; i < encoded.length; i++) {
+        const value = BASE64_CHARS.indexOf(encoded[i]);
+        if (value === -1) return null;
+        decoded = decoded * 64 + value;
+      }
+      return decoded;
+    },
+
+    validJobId: id => id && !isNaN(id) && parseInt(id) >= 0,
+
+    addDismissed: id => {
+      if (!U.validJobId(id)) return false;
+      const encoded = U.encodeJobId(id);
+      if (S.data.dismissed.has(encoded)) return false;
+      S.data.dismissed.add(encoded);
+      S.data.batch.add(encoded);
+      return true;
+    },
+
+    isScript: id => {
+      const encoded = typeof id === 'string' ? id : U.encodeJobId(id);
+      return S.data.scriptDismissed.has(encoded) || S.data.pending.has(encoded);
+    },
+
     debounce: (fn, wait) => { let t; return (...args) => { clearTimeout(t); S.cleanup.timeouts.delete(t); t = setTimeout(() => { S.cleanup.timeouts.delete(t); fn(...args); }, wait); S.cleanup.timeouts.add(t); }; },
     sanitize: text => text && text.trim ? text.trim().toLowerCase() : '',
     escape: text => { const d = document.createElement('div'); d.textContent = text; return d.innerHTML; },
@@ -68,6 +137,14 @@
     isScript: id => S.data.scriptDismissed.has(id) || S.data.pending.has(id)
   };
 
+  // NEW: Constants for sync storage chunking
+  const SYNC_KEY_PREFIX = 'dismissed_chunk_';
+  const MAX_SYNC_ITEMS = 8500; // Keep the most recent 5000 job IDs in sync
+  const MAX_CHUNK_SIZE_BYTES = 8192; // 8kB per chunk
+  const BASE64_ID_SIZE = ID_LENGTH + 3; // Base64 ID size plus JSON formatting overhead (quotes, comma, etc.)
+  const SYNC_CHUNK_SIZE = 850; // Adjusted to allow for JSON storage overhead
+  const MAX_SYNC_CHUNKS = Math.ceil(MAX_SYNC_ITEMS / SYNC_CHUNK_SIZE); // Recalculate chunk count based on new size
+
   // Storage Queue
   const Store = {
     queue: [], processing: false,
@@ -90,16 +167,74 @@
     async save() {
       if (!U.isExt() || !S.data.batch.size) return;
       return Store.add(async () => {
-        const result = await chrome.storage.local.get(['dismissedJobIds']);
-        const stored = new Set(result.dismissedJobIds || []);
-        let updated = false;
+        // --- LOCAL STORAGE ---
+        const localResult = await chrome.storage.local.get(['dismissedJobIds']);
+        const localStored = new Set(localResult.dismissedJobIds || []);
+        let localUpdated = false;
         for (const id of S.data.batch) {
-          if (!stored.has(id)) { stored.add(id); updated = true; }
+          const encodedId = U.encodeJobId(id);
+          if (!localStored.has(encodedId)) {
+            localStored.add(encodedId);
+            localUpdated = true;
+          }
         }
-        if (updated) {
-          await chrome.storage.local.set({ dismissedJobIds: [...stored] });
-          U.log(`Saved ${S.data.batch.size} job IDs. Total: ${stored.size}`);
+        if (localUpdated) {
+          await chrome.storage.local.set({ dismissedJobIds: [...localStored] });
+          U.log(`Saved to local. Total: ${localStored.size}`);
         }
+
+        // --- SYNC STORAGE ---
+        const syncResult = await chrome.storage.sync.get(null);
+        const syncStored = new Set();
+        const existingChunkKeys = [];
+
+        for (const key in syncResult) {
+          if (key.startsWith(SYNC_KEY_PREFIX)) {
+            existingChunkKeys.push(key);
+            (syncResult[key] || []).forEach(id => syncStored.add(id));
+          }
+        }
+
+        let syncUpdated = false;
+        for (const id of S.data.batch) {
+          const encodedId = U.encodeJobId(id);
+          if (!syncStored.has(encodedId)) {
+            syncStored.add(encodedId);
+            syncUpdated = true;
+          }
+        }
+
+        if (syncUpdated) {
+          const recentIds = [...syncStored].slice(-MAX_SYNC_ITEMS);
+          const newChunks = {};
+          const newChunkKeys = [];
+
+          for (let i = 0; i < Math.ceil(recentIds.length / SYNC_CHUNK_SIZE); i++) {
+            const chunkKey = `${SYNC_KEY_PREFIX}${i}`;
+            const start = i * SYNC_CHUNK_SIZE;
+            const end = start + SYNC_CHUNK_SIZE;
+            const chunkData = recentIds.slice(start, end);
+
+            // Ensure the chunk size does not exceed the 8 KB limit
+            let chunkSize = new Blob([JSON.stringify(chunkData)]).size;
+            if (chunkSize > MAX_CHUNK_SIZE_BYTES) {
+              U.err('save', new Error(`Chunk size exceeds 8 KB limit: ${chunkSize} bytes`));
+              continue;
+            }
+
+            newChunks[chunkKey] = chunkData;
+            newChunkKeys.push(chunkKey);
+          }
+
+          const keysToRemove = existingChunkKeys.filter(key => !newChunkKeys.includes(key));
+          if (keysToRemove.length > 0) {
+            await chrome.storage.sync.remove(keysToRemove);
+          }
+
+          await chrome.storage.sync.set(newChunks);
+          U.log(`Saved to sync. Total: ${recentIds.length} IDs in ${newChunkKeys.length} chunks.`);
+        }
+
         S.data.batch.clear();
       });
     },
@@ -107,27 +242,37 @@
     async load() {
       if (!U.isExt()) return;
       return U.safe(async () => {
-        const result = await chrome.storage.local.get(['dismissedJobIds', 'lastManuallyDismissedJobId']);
-        if (result.dismissedJobIds) {
-          result.dismissedJobIds.forEach(id => S.data.dismissed.add(id));
-          U.log(`Loaded ${S.data.dismissed.size} dismissed job IDs`);
+        const [localResult, syncResult] = await Promise.all([
+          chrome.storage.local.get(['dismissedJobIds', 'lastManuallyDismissedJobId']),
+          chrome.storage.sync.get(null)
+        ]);
+
+        const allIds = new Set(localResult.dismissedJobIds || []);
+
+        for (const key in syncResult) {
+          if (key.startsWith(SYNC_KEY_PREFIX)) {
+            (syncResult[key] || []).forEach(id => allIds.add(id));
+          }
         }
-        if (result.lastManuallyDismissedJobId) S.data.lastManual = result.lastManuallyDismissedJobId;
+
+        allIds.forEach(id => S.data.dismissed.add(id));
+        U.log(`Loaded ${S.data.dismissed.size} dismissed job IDs from local and sync chunks`);
+
+        if (localResult.lastManuallyDismissedJobId) S.data.lastManual = localResult.lastManuallyDismissedJobId;
       }, 'load');
     },
 
     async loadSettings() {
       if (!U.isExt()) { await Store.load(); return; }
       return U.safe(async () => {
-        const sync = await chrome.storage.sync.get(['linkedinHiderEnabled', 'linkedinAutoDismissFromListEnabled', 'linkedinDismissingEnabled', 'linkedinCompanyBlockingEnabled']);
+        const sync = await chrome.storage.sync.get(['linkedinHiderEnabled', 'linkedinAutoDismissFromListEnabled', 'linkedinDismissingEnabled', 'linkedinCompanyBlockingEnabled', 'dismissKeywords', 'blockedCompanies']);
         S.flags.hiding = sync.linkedinHiderEnabled !== false;
         S.flags.autoDismiss = sync.linkedinAutoDismissFromListEnabled === true;
         S.flags.keywords = sync.linkedinDismissingEnabled === true;
         S.flags.companies = sync.linkedinCompanyBlockingEnabled === true;
 
-        const local = await chrome.storage.local.get(['dismissKeywords', 'blockedCompanies']);
-        S.data.keywords = local.dismissKeywords || [];
-        S.data.companies = local.blockedCompanies || [];
+        S.data.keywords = sync.dismissKeywords || [];
+        S.data.companies = sync.blockedCompanies || [];
         await Store.load();
       }, 'loadSettings', Store.load);
     }
@@ -163,25 +308,26 @@
     lastManualTime: 0,
 
     isAuto(btn, jobId, evt) {
+      const encodedId = U.encodeJobId(jobId);
       if (evt && evt.isTrusted === false) {
-          console.log(`AUTO: Untrusted event for job ${jobId}`);
-          return true;
+        console.log(`AUTO: Untrusted event for job ${encodedId}`);
+        return true;
       }
 
-      if (U.isScript(jobId) || btn.hasAttribute('data-auto-dismissing')) {
-        console.log(`AUTO: Script flag or auto-dismissing attribute detected for job ${jobId}`);
+      if (U.isScript(encodedId) || btn.hasAttribute('data-auto-dismissing')) {
+        console.log(`AUTO: Script flag or auto-dismissing attribute detected for job ${encodedId}`);
         return true;
       }
 
       const now = Date.now();
       if (now - this.lastManualTime < 50) {
-        console.log(`AUTO: Rapid succession detected (${now - this.lastManualTime}ms gap) for job ${jobId}`);
+        console.log(`AUTO: Rapid succession detected (${now - this.lastManualTime}ms gap) for job ${encodedId}`);
         this.lastManualTime = now;
         return true;
       }
 
       this.lastManualTime = now;
-      console.log(`MANUAL: All checks passed for job ${jobId}`);
+      console.log(`MANUAL: All checks passed for job ${encodedId}`);
       return false;
     },
 
@@ -213,19 +359,20 @@
             console.log(`MANUAL CLICK CONFIRMED for job ID ${jobId}`);
 
             const title = this.extractTitle(wrap) ||
-                         (btn.getAttribute('aria-label') && typeof btn.getAttribute('aria-label') === 'string' ?
-                          btn.getAttribute('aria-label').replace(/dismiss|job/gi, '').trim() : '') ||
-                         `Job ${jobId}`;
+              (btn.getAttribute('aria-label') && typeof btn.getAttribute('aria-label') === 'string' ?
+                btn.getAttribute('aria-label').replace(/dismiss|job/gi, '').trim() : '') ||
+              `Job ${jobId}`;
 
             const companyName = this.extractCompany(wrap) || 'Unknown Company';
             console.log(`Extracted title: "${title}" & company: "${companyName}" for job ${jobId}`);
 
+            const encodedId = U.encodeJobId(jobId);
             U.addDismissed(jobId);
-            S.data.lastManual = jobId;
-            if (U.isExt()) chrome.storage.local.set({ lastManuallyDismissedJobId: jobId });
+            S.data.lastManual = encodedId;
+            if (U.isExt()) chrome.storage.local.set({ lastManuallyDismissedJobId: encodedId });
 
             console.log(`DISPATCHING manualJobDismissed event for job ${jobId}`);
-            window.dispatchEvent(new CustomEvent('manualJobDismissed', { detail: { jobId, jobTitle: title, companyName: companyName } }));
+            window.dispatchEvent(new CustomEvent('manualJobDismissed', { detail: { jobId: encodedId, jobTitle: title, companyName: companyName } }));
 
           }, { capture: true, passive: true, signal: ctrl.signal });
 
@@ -240,7 +387,7 @@
       }, 'attach', 0);
     },
 
-    detectGone: U.debounce(function() {
+    detectGone: U.debounce(function () {
       return U.safe(() => {
         const current = new Set();
         U.query([CFG.SEL.job, ...CFG.SEL.jobFb]).forEach(w => {
@@ -254,7 +401,7 @@
             U.addDismissed(id);
             S.data.lastManual = id;
             detected++;
-            if (U.isExt()) chrome.storage.local.set({ lastManuallyDismissedJobId: id });
+            if (U.isExt()) chrome.storage.sync.set({ lastManuallyDismissedJobId: id });
             window.dispatchEvent(new CustomEvent('manualJobDismissed', { detail: { jobId: id, jobTitle: `Job ${id}`, companyName: 'Unknown' } }));
           }
         }
@@ -298,20 +445,47 @@
       if (!S.flags.hiding) return 0;
       return U.safe(() => {
         let count = 0;
-        const wraps = U.query([`${CFG.SEL.job}:not([data-hidden])`, ...CFG.SEL.jobFb.map(s => `${s}:not([data-hidden])`)]);
+        const wraps = U.query([
+          `${CFG.SEL.job}:not([data-hidden])`,
+          ...CFG.SEL.jobFb.map(s => `${s}:not([data-hidden])`)
+        ]);
+
         wraps.forEach(wrap => {
           const id = wrap.getAttribute('data-job-id');
           if (!id) return;
-          const stored = S.data.dismissed.has(id);
+
+          // Check if job has been encoded when stored
+          const encodedId = U.encodeJobId(id);
+
+          // Check both encoded and raw IDs in the dismissed set
+          const stored = S.data.dismissed.has(encodedId) ||
+            S.data.dismissed.has(id) ||
+            S.data.scriptDismissed.has(encodedId) ||
+            S.data.scriptDismissed.has(id);
+
           const visual = wrap.classList.contains('job-card-list--is-dismissed') ||
-                        wrap.closest(CFG.SEL.dismissed) || wrap.querySelector('[class*="dismissed"]');
-          if (stored || visual) {
+            wrap.closest(CFG.SEL.dismissed) ||
+            wrap.querySelector('[class*="dismissed"]') ||
+            wrap.hasAttribute('data-script-dismissed');
+
+          // Check if job should be hidden
+          if ((stored || visual) &&
+            !wrap.hasAttribute('data-just-undone') &&
+            !wrap.hasAttribute('data-force-show') &&  // Respect force-show flag
+            !S.data.justUndone.has(id) &&              // Check justUndone with raw ID
+            !S.data.justUndone.has(encodedId)) {       // Also check with encoded ID
+
             const item = wrap.closest(CFG.SEL.listItem) || wrap.parentElement;
             if (item && item.style.display !== 'none') {
               item.style.display = 'none';
               item.setAttribute('data-hidden', 'true');
               wrap.setAttribute('data-hidden', 'true');
-              if (!stored) U.addDismissed(id);
+
+              // When hiding a visually dismissed job that's not in storage, add it
+              if (!stored && !S.data.justUndone.has(id) && !S.data.justUndone.has(encodedId)) {
+                U.addDismissed(id);
+              }
+
               count++;
               S.stats.hidden++;
             }
@@ -341,7 +515,7 @@
           const title = btn.getAttribute('aria-label') || 'N/A';
           const company = this.extractCompany(wrap);
           const visual = wrap.classList.contains('job-card-list--is-dismissed') ||
-                        wrap.closest(CFG.SEL.dismissed) || wrap.querySelector('[class*="dismissed"]');
+            wrap.closest(CFG.SEL.dismissed) || wrap.querySelector('[class*="dismissed"]');
 
           if (visual) {
             if (!S.data.dismissed.has(id)) { U.addDismissed(id); Store.save(); }
@@ -428,9 +602,9 @@
       try {
         const titleLink = wrap.querySelector('a.job-card-list__title--link');
         if (titleLink) {
-            const visibleSpan = titleLink.querySelector('span[aria-hidden="true"]');
-            if(visibleSpan) return visibleSpan.textContent.trim();
-            return titleLink.textContent.trim();
+          const visibleSpan = titleLink.querySelector('span[aria-hidden="true"]');
+          if (visibleSpan) return visibleSpan.textContent.trim();
+          return titleLink.textContent.trim();
         }
 
         const btn = U.queryOne([CFG.SEL.dismiss, ...CFG.SEL.dismissFb], wrap);
@@ -495,14 +669,29 @@
     show() {
       return U.safe(() => {
         let count = 0;
-        document.querySelectorAll('[data-hidden="true"]').forEach(el => {
-          if (el.style.display === 'none') {
-            el.style.display = '';
-            el.removeAttribute('data-hidden');
-            count++;
+        // Force unhide all jobs more aggressively
+        U.query([CFG.SEL.job, ...CFG.SEL.jobFb]).forEach(wrap => {
+          const item = wrap.closest(CFG.SEL.listItem) || wrap.parentElement;
+          if (item) {
+            item.style.display = '';
+            item.removeAttribute('data-hidden');
           }
-          if (el.matches(CFG.SEL.job)) el.removeAttribute('data-script-dismissed');
+          wrap.style.display = '';
+          wrap.removeAttribute('data-hidden');
+          wrap.removeAttribute('data-script-dismissed');
+          wrap.removeAttribute('data-auto-dismissing');
+          wrap.classList.remove('job-card-list--is-dismissed');
+          wrap.setAttribute('data-force-show', 'true');
+
+          // Also clean up dismissed state from memory
+          const id = wrap.getAttribute('data-job-id');
+          if (id) {
+            S.data.scriptDismissed.delete(id);
+            S.data.pending.delete(id);
+          }
+          count++;
         });
+
         S.stats.hidden = 0;
         S.stats.companyHidden = 0;
         U.log(`Restored ${count} jobs`);
@@ -511,47 +700,145 @@
     },
 
     undo(specificId) {
-      return U.safe(() => {
+      return U.safe(async () => {
         const id = specificId || S.data.lastManual;
-        if (!id) return { success: false, message: 'No recent dismissal to undo' };
+        if (!id) {
+          U.log('Undo failed: No recent dismissal to undo');
+          return { success: false, message: 'No recent dismissal to undo' };
+        }
 
-        const popupData = UI.popups.get(id);
+        // Handle both encoded and raw IDs
+        const encodedId = id.length === ID_LENGTH ? id : U.encodeJobId(id);
+        const rawId = id.length === ID_LENGTH ? U.decodeJobId(id) : id;
+
+        console.log(`Undoing dismissal for job ${rawId} (encoded: ${encodedId})`);
+        const popupData = UI.popups.get(encodedId) || UI.popups.get(rawId);
         let title = popupData?.title;
 
-        S.data.dismissed.delete(id);
-        S.data.scriptDismissed.delete(id);
-        S.data.pending.delete(id);
-        S.data.batch.delete(id);
+        try {
+          // Grant immunity to this job ID for 5 seconds
+          S.data.justUndone.add(String(rawId));
+          U.timeout(() => S.data.justUndone.delete(String(rawId)), 5000);
 
-        const wrap = U.queryOne([`${CFG.SEL.job}[data-job-id="${id}"]`, ...CFG.SEL.jobFb.map(s => `${s}[data-job-id="${id}"]`)]);
+          // IMPORTANT FIX: Clean up from all storage locations using both formats
+          // The dismissed set stores encoded IDs, so we must use encodedId to remove
+          S.data.dismissed.delete(encodedId);
+          S.data.dismissed.delete(String(rawId)); // Also try raw ID in case it was stored that way
 
-        if (!title) {
-            title = this.extractTitle(wrap) || `Job ${id}`;
-        }
+          // Clean up from script dismissed sets
+          S.data.scriptDismissed.delete(encodedId);
+          S.data.scriptDismissed.delete(String(rawId));
+          S.data.pending.delete(encodedId);
+          S.data.pending.delete(String(rawId));
+          S.data.batch.delete(encodedId);
+          S.data.batch.delete(String(rawId));
 
-        if (wrap) {
-          const item = wrap.closest(CFG.SEL.listItem) || wrap.parentElement;
-          if (item) {
-            item.style.display = '';
-            item.removeAttribute('data-hidden');
+          // Force a storage update to remove the ID
+          if (U.isExt()) {
+            await Store.add(async () => {
+              const localResult = await chrome.storage.local.get(['dismissedJobIds']);
+              const localStored = new Set(localResult.dismissedJobIds || []);
+
+              // Remove both encoded and raw formats
+              localStored.delete(encodedId);
+              localStored.delete(String(rawId));
+
+              await chrome.storage.local.set({ dismissedJobIds: [...localStored] });
+
+              // Also update sync storage
+              const syncResult = await chrome.storage.sync.get(null);
+              let syncUpdated = false;
+
+              for (const key in syncResult) {
+                if (key.startsWith(SYNC_KEY_PREFIX)) {
+                  const chunk = syncResult[key] || [];
+                  const filteredChunk = chunk.filter(id => id !== encodedId && id !== String(rawId));
+                  if (filteredChunk.length !== chunk.length) {
+                    syncResult[key] = filteredChunk;
+                    syncUpdated = true;
+                  }
+                }
+              }
+
+              if (syncUpdated) {
+                await chrome.storage.sync.set(syncResult);
+              }
+            });
+          }
+
+          const wrap = U.queryOne([
+            `${CFG.SEL.job}[data-job-id="${rawId}"]`,
+            `${CFG.SEL.job}[data-job-id="${encodedId}"]`,
+            ...CFG.SEL.jobFb.map(s => `${s}[data-job-id="${rawId}"]`),
+            ...CFG.SEL.jobFb.map(s => `${s}[data-job-id="${encodedId}"]`)
+          ]);
+
+          if (!title) {
+            title = this.extractTitle(wrap) || `Job ${rawId}`;
+          }
+
+          if (wrap) {
+            // Try to find the undo button using more comprehensive matching
+            const buttons = U.query(['button[aria-label*="undo"]', 'button[aria-label*="dismissed"]'], wrap);
+            const matchingButton = buttons.find(btn => {
+              const label = btn.getAttribute('aria-label');
+              if (!label) return false;
+              const labelLower = label.toLowerCase();
+              return labelLower.includes('undo') && (
+                labelLower.includes(`job ${rawId}`) ||
+                labelLower.includes(title.toLowerCase()) ||
+                labelLower.includes('this job') ||
+                labelLower.includes('dismissed')
+              );
+            });
+
+            if (matchingButton) {
+              await click(matchingButton);
+            }
+
+            // Always force the job to be visible regardless of button click success
+            const item = wrap.closest(CFG.SEL.listItem) || wrap.parentElement;
+            if (item) {
+              item.style.display = '';
+              item.removeAttribute('data-hidden');
+            }
+            wrap.style.display = '';
             wrap.removeAttribute('data-hidden');
             wrap.removeAttribute('data-script-dismissed');
+            wrap.setAttribute('data-just-undone', 'true');
+            wrap.setAttribute('data-force-show', 'true'); // Add force-show flag
             wrap.classList.remove('job-card-list--is-dismissed');
+
+            // Remove the flags after a delay to allow UI to update
+            U.timeout(() => {
+              wrap.removeAttribute('data-just-undone');
+              // Keep data-force-show until hiding is disabled or page is refreshed
+            }, 2000);
           }
+
+          if (U.isExt()) {
+            await Store.add(async () => {
+              await chrome.storage.local.set({
+                lastManuallyDismissedJobId: specificId ? S.data.lastManual : null
+              });
+            });
+          }
+
+          if (!specificId || specificId === S.data.lastManual) {
+            S.data.lastManual = null;
+          }
+
+          return {
+            success: true,
+            message: `Restored "${title}"`,
+            jobId: rawId,
+            jobTitle: title
+          };
+
+        } catch (error) {
+          U.err('Undo operation', error);
+          return { success: false, message: 'Error undoing dismissal' };
         }
-
-        if (U.isExt()) Store.add(() => chrome.storage.local.get(['dismissedJobIds']).then(r => {
-          const stored = new Set(r.dismissedJobIds || []);
-          stored.delete(id);
-          return chrome.storage.local.set({
-            dismissedJobIds: [...stored],
-            lastManuallyDismissedJobId: specificId ? S.data.lastManual : null
-          });
-        }));
-
-        if (!specificId || specificId === S.data.lastManual) S.data.lastManual = null;
-
-        return { success: true, message: `Restored "${title}"`, jobId: id, jobTitle: title };
       }, 'undo', { success: false, message: 'Error undoing dismissal' });
     }
   };
@@ -578,23 +865,20 @@
       document.head.appendChild(style);
     },
 
-    // =================================================================
-    // BEGIN FIX: Swap job title and company name in popup HTML
-    // =================================================================
     createPopup(jobId, title, companyName) {
-        console.log(`Creating popup for job ${jobId}: "${title}" from company: "${companyName}"`);
-        this.removePopup(jobId);
+      console.log(`Creating popup for job ${jobId}: "${title}" from company: "${companyName}"`);
+      this.removePopup(jobId);
 
-        const popup = document.createElement('div');
-        popup.id = `ljm-undo-${jobId}`;
-        popup.className = 'ljm-popup';
+      const popup = document.createElement('div');
+      popup.id = `ljm-undo-${jobId}`;
+      popup.className = 'ljm-popup';
 
-        const posIndex = this.popups.size;
-        const topPos = CFG.UI.topPos + (posIndex * CFG.UI.spacing);
-        const shortTitle = title.length > CFG.UI.maxTitle ? title.substring(0, CFG.UI.maxTitle) + '...' : title;
-        const displayCompany = companyName || 'Dismissal';
+      const posIndex = this.popups.size;
+      const topPos = CFG.UI.topPos + (posIndex * CFG.UI.spacing);
+      const shortTitle = title.length > CFG.UI.maxTitle ? title.substring(0, CFG.UI.maxTitle) + '...' : title;
+      const displayCompany = companyName || 'Dismissal';
 
-        popup.style.cssText = `
+      popup.style.cssText = `
             position: fixed !important; top: ${topPos}px !important; right: 20px !important;
             z-index: ${CFG.UI.zIndex + posIndex} !important; min-width: 280px !important; max-width: 320px !important;
             display: block !important; visibility: visible !important; opacity: 1 !important;
@@ -606,7 +890,7 @@
             backdrop-filter: blur(10px) !important; transition: all 0.2s ease !important;
         `;
 
-        popup.innerHTML = `
+      popup.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 16px; font-weight: bold;">Undo</span>
             <div style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2;">
@@ -616,60 +900,57 @@
             </div>
         `;
 
-        document.body.appendChild(popup);
+      document.body.appendChild(popup);
 
-        const ctrl = U.controller();
-        this.controllers.set(jobId, ctrl);
-        this.popups.set(jobId, { element: popup, position: posIndex, timeout: null, title, companyName });
-        const { signal } = ctrl;
+      const ctrl = U.controller();
+      this.controllers.set(jobId, ctrl);
+      this.popups.set(jobId, { element: popup, position: posIndex, timeout: null, title, companyName });
+      const { signal } = ctrl;
 
-        popup.addEventListener('click', async () => {
-            console.log(`Undo button clicked for job ${jobId}`);
-            const result = await Jobs.undo(jobId);
-            this.removePopup(jobId);
+      popup.addEventListener('click', async () => {
+        console.log(`Undo button clicked for job ${jobId}`);
+        const result = await Jobs.undo(jobId);
+        this.removePopup(jobId);
 
-            if (result.success) {
-                this.showMessage(`Success: Job "${result.jobTitle || shortTitle}" restored`, 'success');
-            } else {
-                this.showMessage(`Error: ${result.message}`, 'error');
-            }
-        }, { signal });
+        if (result.success) {
+          this.showMessage(`Success: Job "${result.jobTitle || shortTitle}" restored`, 'success');
+        } else {
+          this.showMessage(`Error: ${result.message}`, 'error');
+        }
+      }, { signal });
 
-        popup.addEventListener('mouseenter', () => {
-            popup.style.background = 'linear-gradient(135deg, #004182 0%, #002a5c 100%)';
-            popup.style.transform = 'translateX(-5px) scale(1.02)';
-        }, { signal });
+      popup.addEventListener('mouseenter', () => {
+        popup.style.background = 'linear-gradient(135deg, #004182 0%, #002a5c 100%)';
+        popup.style.transform = 'translateX(-5px) scale(1.02)';
+      }, { signal });
 
-        popup.addEventListener('mouseleave', () => {
-            popup.style.background = 'linear-gradient(135deg, #0a66c2 0%, #004182 100%)';
-            popup.style.transform = 'translateX(0) scale(1)';
-        }, { signal });
+      popup.addEventListener('mouseleave', () => {
+        popup.style.background = 'linear-gradient(135deg, #0a66c2 0%, #004182 100%)';
+        popup.style.transform = 'translateX(0) scale(1)';
+      }, { signal });
 
-        const close = document.createElement('button');
-        close.innerHTML = '×';
-        close.style.cssText = `
+      const close = document.createElement('button');
+      close.innerHTML = '×';
+      close.style.cssText = `
             position: absolute; top: 4px; right: 6px; background: none; border: none;
             color: rgba(255, 255, 255, 0.7); font-size: 18px; cursor: pointer; width: 24px; height: 24px;
             display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.2s ease;
         `;
-        close.addEventListener('mouseenter', () => { close.style.background = 'rgba(255, 255, 255, 0.2)'; close.style.color = 'white'; }, { signal });
-        close.addEventListener('mouseleave', () => { close.style.background = 'none'; close.style.color = 'rgba(255, 255, 255, 0.7)'; }, { signal });
-        close.addEventListener('click', e => {
-            e.stopPropagation();
-            this.removePopup(jobId);
-        }, { signal });
-        popup.appendChild(close);
+      close.addEventListener('mouseenter', () => { close.style.background = 'rgba(255, 255, 255, 0.2)'; close.style.color = 'white'; }, { signal });
+      close.addEventListener('mouseleave', () => { close.style.background = 'none'; close.style.color = 'rgba(255, 255, 255, 0.7)'; }, { signal });
+      close.addEventListener('click', e => {
+        e.stopPropagation();
+        this.removePopup(jobId);
+      }, { signal });
+      popup.appendChild(close);
 
-        const data = this.popups.get(jobId);
-        if (data) {
-            data.timeout = U.timeout(() => {
-                this.removePopup(jobId);
-            }, CFG.TIME.undo);
-        }
+      const data = this.popups.get(jobId);
+      if (data) {
+        data.timeout = U.timeout(() => {
+          this.removePopup(jobId);
+        }, CFG.TIME.undo);
+      }
     },
-    // =================================================================
-    // END FIX
-    // =================================================================
 
     removePopup(jobId) {
       const data = this.popups.get(jobId);
@@ -704,8 +985,8 @@
       remaining.forEach(([id, data], i) => {
         const newTop = CFG.UI.topPos + (i * CFG.UI.spacing);
         if (data.element) {
-            data.element.style.top = `${newTop}px`;
-            data.element.style.zIndex = `${CFG.UI.zIndex + i}`;
+          data.element.style.top = `${newTop}px`;
+          data.element.style.zIndex = `${CFG.UI.zIndex + i}`;
         }
         data.position = i;
       });
@@ -785,6 +1066,10 @@
 
     startHide() {
       if (!S.flags.hiding || S.int.hide) return;
+      // When enabling hiding, remove force-show flags to allow hiding again.
+      U.query([CFG.SEL.job, ...CFG.SEL.jobFb]).forEach(wrap => {
+        wrap.removeAttribute('data-force-show');
+      });
       Jobs.hide();
       S.int.hide = U.interval(() => { if (S.flags.hiding) Jobs.hide(); }, CFG.INT.hide);
     },
@@ -808,8 +1093,25 @@
       if (S.time.process) { clearTimeout(S.time.process); S.cleanup.timeouts.delete(S.time.process); S.time.process = null; }
     },
 
+    stopDetect() {
+      if (S.int.detect) {
+        clearInterval(S.int.detect);
+        S.cleanup.intervals.delete(S.int.detect);
+        S.int.detect = null;
+      }
+      if (S.dismissObs) {
+        S.dismissObs.disconnect();
+        S.cleanup.observers.delete(S.dismissObs);
+        S.dismissObs = null;
+      }
+    },
+
     restart() {
-      this.stopHide(); this.stopProcess();
+      this.stopDetect();
+      this.stopHide();
+      this.stopProcess();
+
+      this.startDetect();
       if (S.flags.hiding) this.startHide(); else Jobs.show();
       if (S.flags.keywords || S.flags.companies || S.flags.autoDismiss) this.startProcess();
     }
@@ -819,16 +1121,25 @@
   const Nav = {
     setup() {
       if (S.nav.observer) { S.nav.observer.disconnect(); S.cleanup.observers.delete(S.nav.observer); }
-      S.nav.observer = new MutationObserver(U.debounce(() => {
+
+      const reinit = U.debounce(() => {
+        U.log(`Re-initializing for new page: ${S.nav.url}`);
+        Controls.restart();
+      }, 500);
+
+      S.nav.observer = new MutationObserver(() => {
         if (location.href !== S.nav.url) {
+          U.log(`Navigation detected from ${S.nav.url} to ${location.href}.`);
           S.nav.url = location.href;
-          U.timeout(() => {
-            U.log(`Navigation to: ${S.nav.url}. Re-initializing...`);
-            Jobs.init();
-            Controls.restart();
-          }, CFG.TIME.navDelay);
+
+          Controls.stopDetect();
+          S.data.prevJobs.clear();
+          UI.removeAll();
+
+          reinit();
         }
-      }, 500));
+      });
+
       S.nav.observer.observe(document.body, { childList: true, subtree: true });
       S.cleanup.observers.add(S.nav.observer);
     }
@@ -850,7 +1161,7 @@
         case 'ping': send({ status: 'ready' }); break;
         case 'toggleHiding':
           S.flags.hiding = req.enabled;
-          req.enabled ? Controls.startHide() : (Controls.stopHide(), Jobs.show());
+          Controls.restart();
           send({ message: S.flags.hiding ? 'Hiding started' : 'Hiding stopped, jobs restored' });
           break;
         case 'toggleAutoDismissFromList':
@@ -870,13 +1181,13 @@
           break;
         case 'updateKeywords':
           S.data.keywords = req.keywords || [];
-          if (U.isExt()) await Store.add(() => chrome.storage.local.set({ dismissKeywords: S.data.keywords }));
+          if (U.isExt()) await Store.add(() => chrome.storage.sync.set({ dismissKeywords: S.data.keywords }));
           Controls.restart();
           send({ message: `Updated to ${S.data.keywords.length} keywords` });
           break;
         case 'updateCompanies':
           S.data.companies = req.companies || [];
-          if (U.isExt()) await Store.add(() => chrome.storage.local.set({ blockedCompanies: S.data.companies }));
+          if (U.isExt()) await Store.add(() => chrome.storage.sync.set({ blockedCompanies: S.data.companies }));
           Controls.restart();
           send({ message: `Updated to ${S.data.companies.length} companies` });
           break;
@@ -901,7 +1212,16 @@
         case 'clearDismissedJobs':
           S.data.dismissed.clear(); S.data.batch.clear(); S.data.lastManual = null;
           S.data.scriptDismissed.clear(); S.data.pending.clear();
-          if (U.isExt()) await Store.add(() => chrome.storage.local.set({ dismissedJobIds: [], lastManuallyDismissedJobId: null }));
+          if (U.isExt()) {
+            await Store.add(async () => {
+              await chrome.storage.local.set({ dismissedJobIds: [], lastManuallyDismissedJobId: null });
+              const syncItems = await chrome.storage.sync.get(null);
+              const keysToRemove = Object.keys(syncItems).filter(key => key.startsWith(SYNC_KEY_PREFIX));
+              if (keysToRemove.length > 0) {
+                await chrome.storage.sync.remove(keysToRemove);
+              }
+            });
+          }
           Jobs.show();
           send({ message: 'Cleared all dismissed jobs' });
           break;
@@ -925,8 +1245,8 @@
       U.log('Cleaning up...');
       [...S.cleanup.intervals].forEach(clearInterval);
       [...S.cleanup.timeouts].forEach(clearTimeout);
-      [...S.cleanup.controllers].forEach(c => { try { c.abort(); } catch {} });
-      [...S.cleanup.observers].forEach(o => { try { o.disconnect(); } catch {} });
+      [...S.cleanup.controllers].forEach(c => { try { c.abort(); } catch { } });
+      [...S.cleanup.observers].forEach(o => { try { o.disconnect(); } catch { } });
       S.cleanup.intervals.clear(); S.cleanup.timeouts.clear(); S.cleanup.controllers.clear(); S.cleanup.observers.clear();
       Object.keys(S.int).forEach(k => { if (S.int[k]) { clearInterval(S.int[k]); S.int[k] = null; } });
       Object.keys(S.time).forEach(k => { if (S.time[k]) { clearTimeout(S.time[k]); S.time[k] = null; } });
@@ -950,8 +1270,17 @@
       if (this.initialized) return;
       return U.safe(async () => {
         U.log('Initializing...');
-        window.addEventListener('error', e => U.err('unhandled', e.error));
-        window.addEventListener('unhandledrejection', e => U.err('unhandled promise', e.reason));
+
+        const extensionId = chrome.runtime.id;
+        window.addEventListener('error', e => {
+          if (e.filename && e.filename.includes(extensionId)) {
+            U.err('unhandled', e.error || e.message);
+          }
+        });
+        window.addEventListener('unhandledrejection', e => {
+          U.err('unhandled promise', e.reason);
+        });
+
         Cleanup.setup();
         UI.addStyles();
         Msg.setup();
@@ -1028,7 +1357,7 @@
     getStatus: () => manager.getStatus(), restart: () => Controls.restart(), cleanup: () => Cleanup.all(),
     debug: {
       ...Jobs, showPopup: UI.show, hidePopups: UI.removeAll, showMsg: UI.showMessage,
-      flush: Store.save, load: Store.loadSettings, clear: () => Msg.handle({ action: 'clearDismissedJobs' }, () => {}),
+      flush: Store.save, load: Store.loadSettings, clear: () => Msg.handle({ action: 'clearDismissedJobs' }, () => { }),
       getState: () => ({ ...S }), getConfig: () => CFG, measure: (name, fn) => { const start = performance.now(); const result = fn(); console.log(`${name}: ${(performance.now() - start).toFixed(2)}ms`); return result; }
     }
   };

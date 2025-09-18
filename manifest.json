@@ -1,12 +1,15 @@
 {
   "manifest_version": 3,
+  "key": "MD8BIjANCgYJKj9IPz8NCgEBAQUAAz8BDwAwPwENCgI/AQEAP34/Pwg/Mj8/Pz95ZT8/Pzs/K3U/P1E/Pz8/Pz8/PT8/Pz8/P1JKPxFrHT8/SVlIXWNCP3oMVGECPz8/PD8XPw8CBT8/P3w4P1E/Pz8/P1wPGj9eP2l7fggaPz84e1EnWT8MPz8/Pz9YPz8/KT8tPz8/cD9IPz8/H18wPz9vcXc/PS8/Sz91Pz8mPz51Pz8/P0FxPz8/az9DLD9OAT8/Pz87P1U/EmwVPz8/bz8/P2Q/U18TBlI/NWVfVT8/Wz8/TT8/Zz9cPz9GPz8/AwN/Gz8/QD8/JUA/cFg7Pz8/bls+Fms/P0t3P0AMfT0/OBU/PykbP10/P0xFPz8/bT8BPwIDAQABDQo=",
   "name": "LinkedIn Job Manager",
   "version": "1.0",
   "description": "Hide dismissed job cards and auto-dismiss jobs with unwanted keywords on LinkedIn",
   "permissions": [
-    "activeTab",
+    "storage",
     "scripting",
-    "storage"
+    "tabs",
+    "notifications",
+    "alarms"
   ],
   "host_permissions": [
     "*://*.linkedin.com/*"

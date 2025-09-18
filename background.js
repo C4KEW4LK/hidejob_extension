@@ -6,17 +6,17 @@ chrome.runtime.onInstalled.addListener((details) => {
   console.log('LinkedIn Job Manager installed/updated:', details.reason);
   
   if (details.reason === 'install') {
-    // Set default settings on first install - keeping your original defaults
     chrome.storage.sync.set({
-      linkedinHiderEnabled: true, // Your original default was true
-      linkedinAutoDismissFromListEnabled: false, // This was missing in original
+      linkedinHiderEnabled: true,
+      linkedinAutoDismissFromListEnabled: false,
       linkedinDismissingEnabled: false,
-      linkedinCompanyBlockingEnabled: false
+      linkedinCompanyBlockingEnabled: false,
+      dismissKeywords: [],
+      blockedCompanies: [],
+      dismissedJobIds: []
     });
     
     chrome.storage.local.set({
-      dismissKeywords: [],
-      blockedCompanies: [],
       dismissedJobIds: []
     });
     
@@ -96,15 +96,15 @@ chrome.action.onClicked.addListener((tab) => {
 // Clean up storage periodically (optional)
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'cleanup-storage') {
-    console.log('Running periodic storage cleanup');
+    console.log('Running periodic storage cleanup for sync');
     
-    // Clean up very old dismissed job IDs (optional - keeps storage size manageable)
-    chrome.storage.local.get(['dismissedJobIds'], (result) => {
-      if (result.dismissedJobIds && result.dismissedJobIds.length > 10000) {
+    // Clean up very old dismissed job IDs from sync storage to prevent bloat
+    chrome.storage.sync.get(['dismissedJobIds'], (result) => {
+      if (result.dismissedJobIds && result.dismissedJobIds.length > 5500) { // A little buffer over 5000
         // Keep only the most recent 5000 job IDs
         const recentJobIds = result.dismissedJobIds.slice(-5000);
-        chrome.storage.local.set({ dismissedJobIds: recentJobIds });
-        console.log(`Cleaned up storage: ${result.dismissedJobIds.length} -> ${recentJobIds.length} job IDs`);
+        chrome.storage.sync.set({ dismissedJobIds: recentJobIds });
+        console.log(`Cleaned up sync storage: ${result.dismissedJobIds.length} -> ${recentJobIds.length} job IDs`);
       }
     });
   }

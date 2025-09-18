@@ -2,7 +2,7 @@
 
 A Chrome extension to streamline your LinkedIn job search by hiding dismissed jobs and automatically filtering out positions based on keywords and company names.
 
-*This is something I put together for myself, rather quickly, but thought others might find it useful.*
+*This is something I put together for myself, to fit my use case, but thought others might find it useful.*
 
 ## Features
 
@@ -88,7 +88,3 @@ This project is open source and available under the [MIT License](LICENSE).
 ## Disclaimer
 
 This extension is provided "as is" without warranty of any kind. It is not affiliated with, endorsed, or sponsored by LinkedIn.
-
----
-
-*This README was generated with assistance from AI.*
